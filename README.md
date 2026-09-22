@@ -1,6 +1,6 @@
 # SandIAM
 
-SandIAM 是面向 SandAdmin 6.x 的 PostgreSQL 身份与访问管理插件，提供客户主体、应用、环境、身份、角色、策略、服务授权和访问审计能力。
+SandIAM 是面向 SandAdmin 0.1.x 的 PostgreSQL 身份与访问管理插件，提供客户主体、应用、环境、身份、角色、策略、服务授权和访问审计能力。
 
 ## 功能
 
@@ -15,7 +15,7 @@ SandIAM 只负责通用身份、授权和审计。业务数据、业务状态和
 
 ## 环境要求
 
-- SandAdmin 6.x
+- SandAdmin 0.1.x
 - PHP 8.2 或更高版本
 - PostgreSQL
 - PHP 扩展要求见 `plugin/sand-iam/composer.json`
