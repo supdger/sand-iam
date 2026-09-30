@@ -32,13 +32,21 @@ function runReleaseTestCommand(array $args, bool $expectSuccess = true): string
 function removeReleaseFixture(string $path): void
 {
     if (!is_dir($path) || is_link($path)) {
-        if (file_exists($path) || is_link($path)) unlink($path);
+        if (file_exists($path) || is_link($path)) {
+            // Git marks loose objects read-only on Windows. Only this new
+            // fixture's regular files are writable again; never follow links.
+            if (DIRECTORY_SEPARATOR === '\\' && is_file($path) && !is_link($path)
+                && !chmod($path, 0666)) {
+                throw new RuntimeException('Cannot clear temporary file read-only flag: ' . $path);
+            }
+            if (!unlink($path)) throw new RuntimeException('Cannot remove temporary file: ' . $path);
+        }
         return;
     }
     foreach (new FilesystemIterator($path, FilesystemIterator::SKIP_DOTS) as $file) {
         removeReleaseFixture($file->getPathname());
     }
-    rmdir($path);
+    if (!rmdir($path)) throw new RuntimeException('Cannot remove temporary directory: ' . $path);
 }
 
 $started = microtime(true);
