@@ -35,8 +35,26 @@ SandIAM 不负责创建数据库。请使用现有 SandAdmin 数据库；不要�
 7. 发布管理端载荷：SandIAM 包内管理端源码的实际目录是
    `sandadmin-artd/src/views/plugin/sand-iam/`。上传前可仅检查 ZIP 是否携带它：
 
+   macOS，在 ZIP 所在目录执行：
+
    ```sh
-   unzip -l "$SAND_IAM_ZIP" | rg 'sandadmin-artd/src/views/plugin/sand-iam/'
+   unzip -l sand-iam-0.7.6.zip | grep 'sandadmin-artd/src/views/plugin/sand-iam/'
+   ```
+
+   Windows PowerShell，在 ZIP 所在目录执行：
+
+   ```powershell
+   $ErrorActionPreference = 'Stop'
+   Add-Type -AssemblyName System.IO.Compression.FileSystem
+   $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath '.\sand-iam-0.7.6.zip').Path)
+   try {
+       $frontend = @($archive.Entries | Where-Object {
+           $_.FullName.StartsWith('sandadmin-artd/src/views/plugin/sand-iam/')
+       })
+       if ($frontend.Count -eq 0) { throw '包中缺少 SandIAM 管理端源码，停止安装。' }
+       $frontend | Select-Object -ExpandProperty FullName
+       Write-Host "管理端源码：已包含（$($frontend.Count) 个条目）"
+   } finally { $archive.Dispose() }
    ```
 
    本仓没有 SandAdmin 宿主的管理端构建或发布命令，不能据此虚构一条命令；使用宿主既定流程前先由
