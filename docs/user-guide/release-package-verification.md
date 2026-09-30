@@ -67,7 +67,11 @@ ZIP 根目录应包含 `info.ini`、`config.json`、`install.sql`、`update.sql`
 
 ## 从可信源码重复构建
 
-需要复核来源时，先通过可信渠道核对 Release 对应的源码 commit，再检出该固定 commit 的干净独立仓库。不要使用从待验证 ZIP 中解出的程序证明该 ZIP 自身可信。独立仓库中的构建入口是：
+需要复核来源时，先通过可信渠道核对源码 commit，再检出固定 commit 的干净独立仓库。不要使用从待验证 ZIP 中解出的程序证明该 ZIP 自身可信。
+
+公开 `v0.7.6-preview` 对应源码 `5c5e19c06ba39d45e670d9d5b80e5d0dd965e8bf` 的构建器只接受 Unix 绝对路径，不能原样在 Windows 上运行。下面的 Windows 命令需要包含跨平台修复的可信源码 revision；当前修复候选见 [`codex/iam076-cross-platform-regression`](https://github.com/supdger/sand-iam/tree/codex/iam076-cross-platform-regression)，使用前须核对并固定该候选的具体 commit。该候选不是已发布 0.7.6 的原源码，其用户文档也已改变，不能要求整包摘要与旧 ZIP 相同。回归中的旧包复核固定原源码，只替换构建工具并提交隔离夹具，再将全部载荷文件摘要与原发布清单逐项比较；它不改写已发布资产。
+
+独立仓库中的构建入口是：
 
 需要 Git、PHP `>=8.2` 与 PHP `zip` 扩展。在干净独立源码仓库根目录执行；命令和路径须使用代码块中的英文半角符号，中文标点可保留在业务数据中。
 

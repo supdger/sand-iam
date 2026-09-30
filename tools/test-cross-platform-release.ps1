@@ -18,8 +18,8 @@ if ((Get-FileHash -LiteralPath (Join-Path $download 'sand-iam-0.7.6.zip') -Algor
 }
 $verificationDoc = [IO.File]::ReadAllText((Join-Path $source 'docs/user-guide/release-package-verification.md'))
 $installDoc = [IO.File]::ReadAllText((Join-Path $source 'docs/user-guide/installation-and-upgrade.md'))
-$verifyBlocks = [regex]::Matches($verificationDoc, '(?s)```powershell\r?\n(.*?)\r?\n```')
-$installBlocks = [regex]::Matches($installDoc, '(?s)```powershell\r?\n(.*?)\r?\n```')
+$verifyBlocks = [regex]::Matches($verificationDoc, '(?s)```powershell\r?\n(.*?)\r?\n {0,3}```')
+$installBlocks = [regex]::Matches($installDoc, '(?s)```powershell\r?\n(.*?)\r?\n {0,3}```')
 if ($verifyBlocks.Count -ne 2 -or $installBlocks.Count -ne 1) { throw 'Documented command blocks changed; review the runner.' }
 Write-Host 'Step 2: execute the actual documented PowerShell verification and frontend commands'
 Push-Location -LiteralPath $download

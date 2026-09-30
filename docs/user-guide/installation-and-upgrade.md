@@ -22,6 +22,8 @@ php plugin/sand-iam/bin/check-runtime-requirements.php
 
 SandIAM 不负责创建数据库。请使用现有 SandAdmin 数据库；不要运行会隐式新建数据库的安装器或测试工具。
 
+生命周期 SQL 使用包内原始 UTF-8 字节，不要用 Windows 编辑器打开后另存为 UTF-8 BOM 或手工替换分号、引号、反斜杠。公开 SandPackage `0.1.9` 不会剥除 SQL 的 UTF-8 BOM；带 BOM 的脚本会在 PostgreSQL 以 `42601` 语法错误安全拒绝，不能视为升级成功。应重新取得并校验原包，不要通过编辑 SQL 绕过核验。正常 CRLF 换行和字符串中的中文标点属于不同情况，不应因此改写业务数据。
+
 ## 全新安装
 
 1. 锁定 SandAdmin、SandPackage 和 SandIAM 版本，保存候选包摘要并记录宿主实际版本。
