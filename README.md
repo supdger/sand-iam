@@ -2,6 +2,10 @@
 
 SandIAM 是面向 SandAdmin 0.1.x 的 PostgreSQL 身份与访问管理插件，提供客户主体、应用、环境、身份、角色、策略、服务授权和访问审计能力。
 
+> 当前公开 `0.7.3` 安装包是预发布候选，尚非正式发行；请从 [GitHub Releases](https://github.com/supdger/sand-iam/releases) 获取完整 ZIP，并按[包校验](https://github.com/supdger/sand-iam/wiki/Release-package-verification)确认来源、摘要和所需签名。缺少所需签名材料时，不作为正式发行包使用。源码和包存在不代表目标宿主验收通过。
+
+详细步骤见 [安装与升级](https://github.com/supdger/sand-iam/wiki/Installation-and-upgrade)、[配置参考](https://github.com/supdger/sand-iam/wiki/Configuration-reference)和[第一次使用](https://github.com/supdger/sand-iam/wiki/First-use)。完整入口见 [SandIAM Wiki](https://github.com/supdger/sand-iam/wiki)。
+
 ## 功能
 
 - 客户主体、应用和运行环境管理
@@ -26,11 +30,13 @@ SandIAM 只负责通用身份、授权和审计。业务数据、业务状态和
 
 1. 下载与目标版本对应的完整插件包。
 2. 在 SandAdmin 插件管理中上传并安装，不要只复制 `plugin/sand-iam/`。
-3. 按需配置插件运行参数。
+3. 按[配置参考](https://github.com/supdger/sand-iam/wiki/Configuration-reference)由运维负责人提供运行参数和密钥，并核对管理端载荷已按宿主流程部署。
 4. 重新登录后台，为管理员角色授予 SandIAM 菜单和按钮权限。
 5. 依次创建客户主体、应用、环境和所需身份或服务授权。
 
 安装前请备份数据库。升级使用同一版本包内的 `update.sql`，卸载会执行 `uninstall.sql`。
+
+第一次使用前，由业务负责人提供客户主体名称、应用负责人提供应用名称、运维负责人提供目标环境。按 Wiki 登记三者；成功结果是在管理端按“客户主体 → 接入应用 → 应用环境”找到新记录。登录或服务调用还须验证允许、拒绝、撤销和审计。
 
 ## 基本使用顺序
 
