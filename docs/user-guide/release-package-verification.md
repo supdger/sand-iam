@@ -28,6 +28,6 @@ php tools/build-independent-release.php /absolute/path/to/new-artifacts
 
 参数须替换为仓库外、父目录已存在且目标目录尚不存在的绝对路径。命令从已提交 Git blobs 分别生成 `primary` 和 `repeat` 两份包，固定条目顺序、时间和权限，并核对冻结依赖文件摘要与锁文件；任何不一致都会以非零状态码退出。结果中的 `SHA256SUMS`、`manifest.json` 与发布件逐项比较。构建环境 PHP、zip 扩展及 libzip 版本见 manifest，不同压缩工具版本可能影响 ZIP 字节。
 
-本构建使用固定 Git 依赖文件，不声称执行了旧聚合工作区的 Composer/TypeScript 重新生成流程。源码仓库的工具不进入安装 ZIP；安装 ZIP 也不是完整开发仓库。
+`release-build-contract.json` 中的 `toolchain` 及 Composer/TypeScript 参数记录冻结依赖的原生成条件；本次重打包实际使用的 PHP、zip 和 libzip 版本以 `manifest.json` 的 `toolchain` 为准。本构建使用固定 Git 依赖文件，不声称执行了旧聚合工作区的 Composer/TypeScript 重新生成流程。源码仓库的工具不进入安装 ZIP；安装 ZIP 也不是完整开发仓库。
 
 校验成功只证明相应字节一致，不证明目标 SandAdmin、PostgreSQL、身份提供方或业务系统已经兼容。安装前仍需备份，并按[安装与升级](installation-and-upgrade.md)检查精确来源版本及账本条件。管理端源码存在也不代表宿主已构建和部署前端。
