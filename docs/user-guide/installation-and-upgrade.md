@@ -1,6 +1,6 @@
 # 安装与升级
 
-本文面向 SandAdmin 运维人员。安装和卸载会改变数据库；本页当前版本为 `0.7.6-preview`，其受支持升级只读核验 SandIAM 业务结构和数据。插件管理器仍会更新自身安装登记及文件；开始前应取得环境授权并完成可恢复备份。
+本文面向 SandAdmin 运维人员。安装和卸载会改变数据库；本页当前工件为 `v0.7.6-preview.2`（包内版本 `0.7.6`），其受支持升级只读核验 SandIAM 业务结构和数据。插件管理器仍会更新自身安装登记及文件；开始前应取得环境授权并完成可恢复备份。
 
 ## 前置条件
 
@@ -22,6 +22,20 @@ php plugin/sand-iam/bin/check-runtime-requirements.php
 
 SandIAM 不负责创建数据库。请使用现有 SandAdmin 数据库；不要运行会隐式新建数据库的安装器或测试工具。
 
+生命周期 SQL 使用包内原始 UTF-8 字节，不要用 Windows 编辑器打开后另存为 UTF-8 BOM 或手工替换分号、引号、反斜杠。公开 SandPackage `0.1.9` 不会剥除 SQL 的 UTF-8 BOM；带 BOM 的脚本会在 PostgreSQL 以 `42601` 语法错误安全拒绝，不能视为升级成功。应重新取得并校验原包，不要通过编辑 SQL 绕过核验。正常 CRLF 换行和字符串中的中文标点属于不同情况，不应因此改写业务数据。
+
+## 接入已有 SandIAM 表
+
+已有 `sand_iam_*` 表时，不运行全新安装或重放 `install.sql`。本源码候选的根 `existing-schema.json` 声明 0.7.6 的 SQL 身份、86 张表和已发布 0.7.3 的完整 43 条迁移账本；声明随完整包交付。它不包含凭证，也不使数据库自动升级。`v0.7.6-preview.2` ZIP 携带此声明，原 `v0.7.6-preview` ZIP 保持不变；选择工件前确认其实际携带此声明，以及宿主 SandPackage 正式工件确实支持 inspect→确认→attach。公开 0.1.9 不具备该接入入口，本次联测目标为 SandPackage `0.1.10-rc.1`；开始前核对该工件是否已公开、宿主是否实际加载它。两方候选存在不能替代真实接入验收。
+
+先在 PostgreSQL 只读事务中确认数据库身份、迁移账本、表集合和结构指纹，再选路径：
+
+- **完整 43 条账本**：只在根声明的四项摘要及版本/SQL 身份全部匹配时，使用支持该契约的 SandPackage 执行明确确认的接入。记录既有安装版本是 0.7.3/0.7.5 时，按标准升级入口升级至 0.7.6；其 `update.sql` 只读核对已发布基线，不补缺失迁移。
+- **嵌入版 0.7.3 的 42 条账本**：本候选的 `lifecycle/existing-schema-embedded-073.json` 仅保留旧基线供比对，不能替换当前根声明来安装 0.7.6。只有旧完整 ZIP 的 SHA-256 为 `611b3f5b8acb985319d888008ce239c4741b54ebef9c39a09c9b25b702d60215`、其 SQL/声明与实际数据库匹配时，才可在支持该契约的安装器中受控接入旧版。完成可恢复备份并获数据库写入授权后，由运维明确执行包内已有 `lifecycle/bridge-embedded-073-to-published-073.sql`，补入 `042_permission_menu_hierarchy.pgsql` 并保持原菜单授权；桥接核查精确前置账本，事务失败即停止。该迁移文件原始 SHA-256 是 `953a647496d2b25d6697e2f6c6aa57c1b2e90370b3c82be19ed0e5bc88543284`，账本自校验值为 `62d79e86170788d40d39b528b604269e439e0d3588c011154c8e12080564fbeb`，两者用途不同。重新只读确认完整 43 条账本后，再走标准 0.7.6 升级。
+- **其他账本或结构**：停止接入，保留身份、缺失/冲突迁移和候选摘要，交维护方制定对应路径。不要修改账本值、用当前源码改成旧 metadata 伪造旧包，或执行 fresh install 代替迁移。
+
+本轮在现有 `sandai.public` 的 `BEGIN READ ONLY` / `ROLLBACK` 核查确认 86 张表、42 条账本及旧声明三个指纹完全匹配；它仍属于第二种情况。未执行旧版接入、桥接、升级或服务启停，因此该数据库尚不满足 0.7.6 接入条件。缺少上述旧 ZIP、可恢复备份或正式支持接入的 SandPackage/宿主基线时，先停在只读核查，不把以上顺序当作已验收的可执行安装链。
+
 ## 全新安装
 
 1. 锁定 SandAdmin、SandPackage 和 SandIAM 版本，保存候选包摘要并记录宿主实际版本。
@@ -35,8 +49,26 @@ SandIAM 不负责创建数据库。请使用现有 SandAdmin 数据库；不要�
 7. 发布管理端载荷：SandIAM 包内管理端源码的实际目录是
    `sandadmin-artd/src/views/plugin/sand-iam/`。上传前可仅检查 ZIP 是否携带它：
 
+   macOS，在 ZIP 所在目录执行：
+
    ```sh
-   unzip -l "$SAND_IAM_ZIP" | rg 'sandadmin-artd/src/views/plugin/sand-iam/'
+   unzip -l sand-iam-0.7.6.zip | grep 'sandadmin-artd/src/views/plugin/sand-iam/'
+   ```
+
+   Windows PowerShell，在 ZIP 所在目录执行：
+
+   ```powershell
+   $ErrorActionPreference = 'Stop'
+   Add-Type -AssemblyName System.IO.Compression.FileSystem
+   $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath '.\sand-iam-0.7.6.zip').Path)
+   try {
+       $frontend = @($archive.Entries | Where-Object {
+           $_.FullName.StartsWith('sandadmin-artd/src/views/plugin/sand-iam/')
+       })
+       if ($frontend.Count -eq 0) { throw '包中缺少 SandIAM 管理端源码，停止安装。' }
+       $frontend | Select-Object -ExpandProperty FullName
+       Write-Host "管理端源码：已包含（$($frontend.Count) 个条目）"
+   } finally { $archive.Dispose() }
    ```
 
    本仓没有 SandAdmin 宿主的管理端构建或发布命令，不能据此虚构一条命令；使用宿主既定流程前先由

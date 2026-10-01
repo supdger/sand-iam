@@ -16,7 +16,7 @@ function sandIamPayloadRoots(): array
 {
     return [
         'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'SECURITY.md', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.md', 'SBOM.cdx.json', 'release-build-contract.json',
-        'config.json', 'info.ini', 'install.sql', 'update.sql', 'uninstall.sql',
+        'config.json', 'info.ini', 'existing-schema.json', 'install.sql', 'update.sql', 'uninstall.sql',
         'migrations', 'lifecycle', 'plugin/sand-iam',
         'sandadmin-artd/src/views/plugin/sand-iam', 'portal', 'sdk', 'docs/user-guide', 'examples',
     ];
@@ -98,6 +98,19 @@ function sandIamCanonicalPayloadPath(string $path): string
 }
 
 /**
+ * Only use for relative names obtained from filesystem iteration. Windows
+ * backslashes represent separators; on POSIX a literal backslash filename
+ * remains invalid. Git/ZIP/user-supplied paths keep the strict boundary above.
+ */
+function sandIamFilesystemRelativePath(string $path): string
+{
+    if (DIRECTORY_SEPARATOR === '\\') {
+        $path = str_replace('\\', '/', $path);
+    }
+    return sandIamCanonicalPayloadPath($path);
+}
+
+/**
  * The release ZIP and Git-object materializer only support normalized relative
  * paths. Keep this boundary shared so a path cannot be accepted by policy but
  * rejected later by candidate construction.
@@ -142,7 +155,7 @@ function sandIamPayloadFiles(string $root, bool $includeGeneratedDescriptors): a
             if (!$file instanceof SplFileInfo) {
                 continue;
             }
-            $relative = $entry . '/' . substr($file->getPathname(), strlen($path) + 1);
+            $relative = sandIamFilesystemRelativePath($entry . '/' . substr($file->getPathname(), strlen($path) + 1));
             if (!sandIamPayloadPathSupported($relative)) {
                 throw new RuntimeException('payload path contains unsupported characters');
             }

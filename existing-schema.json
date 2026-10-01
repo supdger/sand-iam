@@ -1,0 +1,12 @@
+{
+  "format": 1,
+  "app": "sand-iam",
+  "version": "0.7.6",
+  "install_sql_sha256": "6f8a0bdb44fb17ad6e27107188ab9e8ea004169590b85ae53dbeb857fe5d9482",
+  "ledger_table": "sand_iam_schema_migration",
+  "ledger_rows": 43,
+  "ledger_sha256": "78fe891f28063905c80a94cb02328f6923645a8f500648df32ff96aedf9083fc",
+  "table_count": 86,
+  "table_names_sha256": "5feaa153988f0b1e05a04e6c91192c8ef19d9ee8fb7b4bf51aa8350bd369ea88",
+  "catalog_schema_sha256": "3ba37e63adace3e7950cdd1f435010216d351929c27662a24ae55eedadc6821e"
+}
