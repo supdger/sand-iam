@@ -1,4 +1,6 @@
--- SandIAM 0.7.3/0.7.5/0.7.6 -> 0.8.0: no schema or data changes.
+-- SandIAM 0.7.3/0.7.5/0.7.6 -> 0.8.0: standalone read-only admission.
+-- The lifecycle builder combines this gate with migration 043 in one
+-- read-write transaction; this source alone does not upgrade the database.
 -- The 43 expected rows are copied from the published 0.7.3 lifecycle ledger.
 -- In particular, revision 042 is 042_permission_menu_hierarchy.pgsql, never
 -- the conflicting 042_schema_semantics.pgsql from an unpublished branch.

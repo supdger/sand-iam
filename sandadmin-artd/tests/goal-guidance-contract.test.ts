@@ -33,3 +33,11 @@ assert.equal(activeClientAudience({ id: 901, status: 1, audience: 'provider-b' }
 assert.equal(activeClientAudience({ id: 901, status: 1, audience: 'provider-b' }, 902), null)
 assert.equal(activeClientAudience({ id: 901, status: 2, audience: 'provider-b' }, 901), null)
 assert.equal(activeClientAudience({ id: 901, status: 1, code: 'provider-b' }, 901), null)
+
+const access = resolveGuidanceGoal('access', undefined)!
+assert.ok(access.steps.findIndex(step => step.key === 'business-action') < access.steps.findIndex(step => step.key === 'policy'))
+assert.ok(access.steps.some(step => step.key === 'business-action' && !step.optional && step.endpoint === 'application-business-action'))
+const api = resolveGuidanceGoal('api', undefined)!
+assert.deepEqual(api.steps.slice(0, 3).map(step => step.key), ['resource', 'business-action', 'api-resource'])
+assert.equal(goalStepParams(access.steps.find(step => step.key === 'business-action')!, { application_id: 20 })?.application_id, 20)
+console.log('Required business action and resource prerequisites PASS')

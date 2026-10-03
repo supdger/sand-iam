@@ -75,11 +75,35 @@ final class PolicyAuthorizer
         $this->assertOperation($operation);
         $application = Application::where('id', $applicationId)->where('status', 1)->find();
         $resource = Resource::where('application_id', $applicationId)->where('code', $resourceCode)->where('status', 1)->find();
-        if ($application === null || $resource === null || !$this->scopeMatcher->matches($scope, $attributes)) {
-            $this->auditWriter->write('identity', (string) $identityId, $application ? (int) $application->organization_id : null, $applicationId ?: null, 'scope.' . $operation, $resourceCode, $resource ? (int) $resource->id : null, 'denied', $requestId, ['scope' => $scope]);
-            throw new ApiException('SAND_IAM_RESOURCE_SCOPE_DENIED', 403);
-        }
-        $this->auditWriter->write('identity', (string) $identityId, (int) $application->organization_id, $applicationId, 'scope.' . $operation, $resourceCode, (int) $resource->id, 'allowed', $requestId, ['scope' => $scope]);
+        $allowed = $application !== null && $resource !== null && $this->scopeMatcher->matches($scope, $attributes);
+        $organizationId = $application ? (int) $application->organization_id : null;
+        $resourceId = $resource ? (int) $resource->id : null;
+        // Audit identity never becomes an authorization cache. Live state and
+        // the trusted attributes are evaluated again, including on every replay.
+        $eventKey = hash('sha256', json_encode($this->canonicalAuditValue([
+            'version' => 'sand-iam/scope-audit/v1',
+            'actor_type' => 'identity', 'identity_id' => $identityId,
+            'organization_id' => $organizationId, 'application_id' => $applicationId,
+            'resource_code' => $resourceCode, 'resource_id' => $resourceId,
+            'operation' => $operation, 'outcome' => $allowed ? 'allowed' : 'denied',
+            'application_available' => $application !== null, 'resource_available' => $resource !== null,
+            'scope' => $scope, 'attributes' => $attributes,
+        ]), JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION));
+        $this->auditWriter->write(
+            'identity', (string) $identityId, $organizationId, $application !== null ? $applicationId : null,
+            'scope.' . $operation, $resourceCode, $resourceId, $allowed ? 'allowed' : 'denied', $requestId,
+            ['scope' => $scope, 'scope_check_fingerprint' => $eventKey],
+            $eventKey,
+        );
+        if (!$allowed) throw new ApiException('SAND_IAM_RESOURCE_SCOPE_DENIED', 403);
+    }
+
+    private function canonicalAuditValue(mixed $value): mixed
+    {
+        if (!is_array($value)) return $value;
+        if (!array_is_list($value)) ksort($value, SORT_STRING);
+        foreach ($value as $key => $item) $value[$key] = $this->canonicalAuditValue($item);
+        return $value;
     }
 
     private function assertOperation(string $operation): void

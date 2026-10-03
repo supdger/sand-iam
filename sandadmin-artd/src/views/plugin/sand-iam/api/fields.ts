@@ -415,9 +415,10 @@ export const policyFields: SandIamFormField[] = [
     dependency: { sourceKey: 'application_id', targetParam: 'application_id' },
     help: '策略主体二选一：选择应用身份，或选择上面的角色。'
   }),
-  field('action', 'text', {
+  field('action', 'business-action', {
     required: true,
-    help: '从接入开发者的业务动作清单复制准确值。配套工作项示例读取使用 work_item.read；自行起名不会让业务接口自动支持该动作。'
+    dependency: { sourceKey: 'application_id', targetParam: 'application_id' },
+    help: '选择当前应用已声明并启用的业务动作。没有所需动作时，先按开发者提供的准确代码和名称到「应用业务动作」登记，再返回刷新。'
   }),
   field('effect', 'select', {
     required: true,
@@ -790,10 +791,10 @@ export const apiResourceFields: SandIamFormField[] = [
     dependency: { sourceKey: 'application_id', targetParam: 'application_id' },
     help: '必须先登记业务资源。'
   }),
-  field('action', 'text', {
+  field('action', 'business-action', {
     required: true,
     createOnly: true,
-    placeholder: 'order.read',
+    dependency: { sourceKey: 'application_id', targetParam: 'application_id' },
     help: '稳定的业务语义动作，必须引用同一应用中已启用的声明；不是页面按钮或 HTTP 方法。'
   }),
   field('operation', 'select', {

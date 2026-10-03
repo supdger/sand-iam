@@ -851,7 +851,7 @@
     if (creating.value) {
       const isEnvironmentCreation = props.endpoint === 'environment'
       await runWrite(
-        () => saveSandIamResource(props.endpoint, payload, !isEnvironmentCreation),
+        () => saveSandIamResource(props.endpoint, payload, false),
         '已保存',
         isEnvironmentCreation ? describeEnvironmentEditorSaveError : undefined,
         props.writeMode === 'oauth-client',
@@ -862,7 +862,7 @@
     }
     const id = editorRowId
     if (id === null || original === null || rowId(original) !== id) return
-    await runWrite(() => updateSandIamResource(props.endpoint, { ...payload, id }), '已保存', undefined, false, current)
+    await runWrite(() => updateSandIamResource(props.endpoint, { ...payload, id }, false), '已保存', undefined, false, current)
   }
 
   async function confirmDisable(row: SandIamResourceRow): Promise<void> {
@@ -1359,7 +1359,7 @@
       />
 
       <ElAlert
-        v-if="requestError"
+        v-if="requestError && !editorOpen"
         class="mb-4"
         type="error"
         :closable="false"

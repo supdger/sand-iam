@@ -70,6 +70,29 @@ try {
     $decision = $authorizer->authorize($app, $identity, $prefix, $prefix . '.read', 'read', [], $prefix . '-authorize'); cbpg($decision['allowed'], 'actual PolicyAuthorizer authorize entrypoint');
     $guard = (new ApplicationAuthorizationService())->entityScopeGuard($decision + ['application_id' => $app, 'identity_id' => $identity, 'resource_code' => $prefix, 'operation' => 'read', 'request_id' => $prefix . '-entity'], 'entity', static fn (object $entity): array => ['owner_id' => $entity->owner_id]);
     $guard->assertEntity((object) ['owner_id' => $identity]); cbpg(true, 'trusted within-scope entity passes');
+    $collectionRequest = $prefix . '-collection';
+    $collectionDecision = $decision + ['application_id' => $app, 'identity_id' => $identity, 'resource_code' => $prefix, 'operation' => 'read', 'request_id' => $collectionRequest];
+    $collectionGuard = (new ApplicationAuthorizationService())->entityScopeGuard($collectionDecision, 'collection', static fn (object $entity): array => ['id' => $entity->id, 'owner_id' => $entity->owner_id]);
+    $entities = [(object) ['id' => 1, 'owner_id' => $identity], (object) ['id' => 2, 'owner_id' => $identity]];
+    $collectionGuard->assertCollection($entities); $collectionGuard->assertCompleted();
+    $collectionGuard->assertCollection($entities); $collectionGuard->assertCompleted();
+    $scopeEvents = static function () use ($pdo, $collectionRequest): array {
+        $statement = $pdo->prepare('SELECT request_id, action, outcome, event_key, context FROM sand_iam_audit_log WHERE request_id=? AND action=? ORDER BY id');
+        $statement->execute([$collectionRequest, 'scope.read']);
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
+    };
+    cbpg(count($scopeEvents()) === 2, 'real PostgreSQL two-entity collection and identical replay append only two scope events');
+    foreach ([1, 2] as $retry) {
+        try { $collectionGuard->assertCollection([$entities[0], (object) ['id' => 3, 'owner_id' => $identity + 1]]); throw new RuntimeException('Partially unauthorized collection accepted'); }
+        catch (\plugin\sandadmin\exception\ApiException $e) { cbpg($e->getCode() === 403 && str_starts_with($e->getMessage(), 'SAND_IAM_RESOURCE_SCOPE_DENIED'), 'real PostgreSQL mixed collection denial remains 403 on attempt ' . $retry); }
+        try { $collectionGuard->assertCompleted(); throw new RuntimeException('Previous success hid collection denial'); }
+        catch (\plugin\sandadmin\exception\ApiException $e) { cbpg($e->getCode() === 500, 'denied collection clears previous completion'); }
+    }
+    $collectionGuard->assertCollection($entities);
+    $scopeRows = $scopeEvents();
+    cbpg(count($scopeRows) === 3 && array_column($scopeRows, 'outcome') === ['allowed', 'allowed', 'denied']
+        && count(array_unique(array_column($scopeRows, 'event_key'))) === 3
+        && array_unique(array_column($scopeRows, 'request_id')) === [$collectionRequest], 'real PostgreSQL scope denial survives subsequent allow under original request/action');
     foreach (['owner', 'application', 'resource'] as $case) {
         $guard = (new ApplicationAuthorizationService())->entityScopeGuard($decision + ['application_id' => $app, 'identity_id' => $identity, 'resource_code' => $prefix, 'operation' => 'read', 'request_id' => $prefix . '-entity-' . $case], 'entity', static fn (object $entity): array => ['owner_id' => $entity->owner_id]);
         if ($case === 'application') $exec($second, 'UPDATE sand_iam_application SET status=2 WHERE id=?', [$app]);

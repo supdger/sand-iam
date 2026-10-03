@@ -32,18 +32,26 @@ const developer = step('api-governance', 'developer-docs', {
   input: '管理员提供客户主体与应用代码、已登记资源和动作。开发者按接入页的 SDK 示例接入。HTTP decide 需要 SandIAM 本地登录或 OAuth 签发的用户令牌；其他系统现有 token 不能直接当作 SandIAM 用户令牌。',
   result: '业务后端执行授权并落实返回的数据范围，分别验证允许、拒绝、范围外直接访问和撤销。不能仅隐藏按钮。'
 })
+const businessAction = step('api-governance', 'business-action', {
+  input: '先核对当前应用已启用的业务动作并复用。没有所需动作时，请接入开发者提供准确的动作代码、名称和说明，由有权管理员声明；代码必须与业务后端实际鉴权保持一致。',
+  result: '当前应用已有所需的启用动作，配置策略或接口时可以按名称选择。声明动作本身不会授予任何人权限。',
+  emptyHint: '先声明并启用所需业务动作，再配置策略或接口。'
+})
 export const guidanceGoals: readonly GuidanceGoal[] = [
   { id: 'login', title: '让用户登录应用', situation: '应用还没有可用的用户登录入口。', outcome: '用户能开通账号并登录，错误密码被拒绝。', skip: '已有登录需先衔接 SandIAM 的应用身份与可信令牌，再配置权限；企业账号登录请选择“使用已有企业账号登录”。', steps: [
     step('people-access', 'auth-settings'), step('people-access', 'identity-invitation'),
     step('people-access', 'employee-login'), step('people-access', 'identity'), { ...developer, input: '管理员提供组织与应用代码、已开放的登录方式。开发者将 SandIAM 登录及 MFA 接入应用，使用本地登录或 OAuth 签发的会话；不能直接使用其他系统 token。', result: '用户能登录本应用，错误密码被拒绝，退出后旧会话不可再访问账户。此目标不要求配置资源、策略或数据范围。' },
     step('people-access', 'audit') ] },
   { id: 'access', title: '控制权限和数据范围', situation: '已有用户，需要决定能做什么、能看哪些数据。', outcome: '同一业务操作有权允许、无权拒绝，范围外数据不能读取。', skip: '复用现有身份与登录；按用户直接授权时可跳过角色及角色分配。', steps: [
-    step('people-access', 'identity'), step('people-access', 'resource'),
+    step('people-access', 'identity'), step('people-access', 'resource'), businessAction,
     step('people-access', 'role', { optional: true }), step('people-access', 'identity-role', { optional: true }),
     step('people-access', 'policy'), step('people-access', 'policy-simulate'), developer,
     step('people-access', 'audit') ] },
   { id: 'machine', title: '让后端调用服务', situation: '应用后端要调用另一个服务，例如 AI 或工作流能力。', outcome: '服务真实完成一次调用，无权动作、错误受众及已撤销凭证被拒绝。', skip: '不需要开通员工账号或配置人员登录。复用已有应用、环境和调用身份。', steps: [
-    step('connection', 'client'), step('connection', 'grant'), step('connection', 'credential'),
+    step('connection', 'client'), step('connection', 'grant', {
+      input: '从当前调用身份可用的服务及动作目录选择已有能力。若没有所需服务或动作，请服务提供方或平台管理员先登记并启用，再回来刷新；不要为调用服务另建应用业务动作。',
+      result: '当前调用身份获得所需服务动作的授权，受众与提供方给出的准确值一致；尚需签发凭证并完成真实调用。'
+    }), step('connection', 'credential'),
     { ...developer, key: 'machine-integration', label: '交付并执行一次服务调用',
       input: '管理员安全交付调用凭证及应用、环境、调用身份；服务提供方给出调用地址、服务动作、受众和 SDK。使用服务提供方的机器调用示例，不使用人员登录或 decide 示例。',
       result: '服务提供方确认业务结果，调用方确认错误受众、无权动作和撤销后请求被拒绝；按请求号核对双方审计。' },
@@ -57,7 +65,7 @@ export const guidanceGoals: readonly GuidanceGoal[] = [
     step('auth-session', 'scim-tokens', { optional: true, input: '仅上游使用 SCIM 推送时签发令牌，交给目录负责人配置。使用其他连接器时可跳过；令牌明文仅展示一次。', result: '上游能向当前应用同步测试用户，错误令牌拒绝，撤销后旧令牌失效。' }),
     step('people-access', 'identity'), step('people-access', 'audit') ] },
   { id: 'api', title: '管理业务接口的访问', situation: '已有业务接口，需要将路由和权限动作对应起来。', outcome: '接口使用已登记业务动作鉴权，未授权调用被拒绝并可追溯。', skip: '不要求新建 OAuth/CAS 客户端；按应用实际登录方式接入。', steps: [
-    step('api-governance', 'business-action', { input: '由业务开发者提供稳定动作代码和名称，例如 work_item.read；动作表达业务行为，不用 URL 代替。' }),
+    step('people-access', 'resource'), businessAction,
     step('api-governance', 'api-resource', { input: '登记业务接口并选择已启用动作；代码由接入开发者提供，与应用鉴权时的 apiCode 一致。' }),
     step('api-governance', 'route-binding', { input: '由开发者提供实际路由和方法，绑定到已登记接口；扫描仅发现路由，不自动授权。' }),
     developer, step('api-governance', 'policy-simulate'), step('people-access', 'audit') ] }
@@ -70,6 +78,10 @@ export function canUseGoal(goal: GuidanceGoal, hasAuth: (permission: string) => 
 }
 export function guidanceQuery(context: TaskContext, goal: string, stepKey?: string, method?: string): Record<string, string> {
   return { ...taskContextQuery(context), goal, ...(stepKey ? { step: stepKey } : {}), ...(method ? { method } : {}) }
+}
+/** The public menu path differs from the overview component's source directory (`index`). */
+export function guidanceLocation(context: TaskContext, goal: string, stepKey?: string, method?: string) {
+  return { path: '/sand-iam/overview', query: guidanceQuery(context, goal, stepKey, method) }
 }
 export function nextGoalStep(goal: GuidanceGoal, key: string): GoalStep | undefined {
   const index = goal.steps.findIndex(item => item.key === key)

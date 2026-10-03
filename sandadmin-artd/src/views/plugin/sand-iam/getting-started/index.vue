@@ -28,8 +28,8 @@
     type WizardStep
   } from './wizardState'
 
-  import { guidanceGoal, guidanceQuery } from '../api/goalGuidance'
-  import { parseTaskContext } from '../api/taskContext'
+  import { guidanceGoal, guidanceLocation } from '../api/goalGuidance'
+  import { wizardEntry } from './wizardEntry'
 
   type SetupGoal = 'people' | 'service' | 'event'
 
@@ -63,9 +63,9 @@
     readonly permission: string
   }
 
-  const CONTEXT_KEY = 'sand-iam.getting-started.v1'
   const router = useRouter()
   const route = useRoute()
+  const contextStorageKey = ref<string | null>(null)
   const activeGoal = computed(() => guidanceGoal(route.query.goal))
   const { hasAuth } = useAuth()
   const steps: readonly StepDefinition[] = [
@@ -266,10 +266,11 @@
 
   function persistContext(): void {
     const storage = storageAvailable()
-    if (storage === null) return
+    const key = contextStorageKey.value
+    if (storage === null || key === null) return
     try {
       storage.setItem(
-        CONTEXT_KEY,
+        key,
         JSON.stringify(
           createWizardContext({ ...ids }, { ...phases }, { ...pendingCodes }, Date.now())
         )
@@ -281,7 +282,8 @@
 
   function clearPersistedContext(): void {
     try {
-      storageAvailable()?.removeItem(CONTEXT_KEY)
+      const key = contextStorageKey.value
+      if (key !== null) storageAvailable()?.removeItem(key)
     } catch {
       // Storage is a convenience only and never supplies authorization.
     }
@@ -555,10 +557,22 @@
   }
 
   async function restoreContext(): Promise<void> {
+    let entry: ReturnType<typeof wizardEntry>
+    try { entry = wizardEntry(route.query) } catch {
+      pageMessage.value = '应用归属参数无效，请返回任务入口重新选择。'
+      return
+    }
+    if (entry.newApplication && entry.storageKey === null) {
+      await router.replace({ path: route.path, query: { ...route.query, flow: crypto.randomUUID() } })
+      entry = wizardEntry(route.query)
+    }
+    contextStorageKey.value = entry.storageKey
+    const persisted = entry.storageKey === null ? null : parseWizardContext(storageAvailable()?.getItem(entry.storageKey) ?? null, Date.now())
     // A goal may already carry an application. Re-read each record through the existing verifier.
-    if (route.query.application_id || route.query.organization_id) {
+    // A new registration only resumes its own flow, never the general wizard or supplied app IDs.
+    if (entry.supplied !== null && !(entry.newApplication && persisted !== null)) {
       try {
-        const supplied = parseTaskContext(route.query)
+        const supplied = entry.supplied
         if (supplied.application_id) {
           const response = await readSandIamResource('application', supplied.application_id)
           const application = isRecord(response) && isRecord(response.data) ? response.data : response
@@ -576,7 +590,7 @@
         return
       } catch { pageMessage.value = '无法确认传入的应用，请重新选择已有记录。'; return }
     }
-    const context = parseWizardContext(storageAvailable()?.getItem(CONTEXT_KEY) ?? null, Date.now())
+    const context = persisted
     if (context === null) {
       clearPersistedContext()
       return
@@ -614,7 +628,7 @@
 
   function continueGoal(): void {
     const context = { ...(ids.organization ? { organization_id: ids.organization } : {}), ...(ids.application ? { application_id: ids.application } : {}), ...(ids.environment ? { environment_id: ids.environment } : {}) }
-    void router.push({ path: '/sand-iam/index', query: guidanceQuery(context, activeGoal.value?.id ?? '', undefined, typeof route.query.method === 'string' ? route.query.method : undefined) })
+    void router.push(guidanceLocation(context, activeGoal.value?.id ?? '', undefined, typeof route.query.method === 'string' ? route.query.method : undefined))
   }
 
   onMounted(() => {
@@ -762,6 +776,7 @@
           :step="activeStep.id"
           :record="records[activeStep.id]"
           :parent-label="currentParentLabel"
+          :draft-key="contextStorageKey === null ? undefined : `${contextStorageKey}.draft.${activeStep.id}.${parentIdFor(activeStep.id) ?? 'root'}`"
           :saving="saving || verifying !== null"
           @submit="saveStep"
         />

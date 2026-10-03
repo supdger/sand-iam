@@ -56,6 +56,7 @@ export type SandIamWriteMode =
 
 export type SandIamFieldKind =
   | 'text'
+  | 'business-action'
   | 'number'
   | 'reference'
   | 'status'

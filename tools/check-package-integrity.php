@@ -264,7 +264,9 @@ if (is_string($builderSource)
     $updateSource = $updateMatch[1];
 }
 preg_match_all("/^\\s*'([0-9]{3}_[^']+\\.pgsql)',$/m", $updateSource, $updateMatches);
-$updateMigrationNames = in_array($currentVersion, ['0.7.6', '0.8.0'], true) ? [] : ($updateMatches[1] ?? []);
+$updateMigrationNames = in_array($currentVersion, ['0.8.0', '0.8.1'], true)
+    ? ['043_scope_audit_event_key.pgsql']
+    : ($currentVersion === '0.7.6' ? [] : ($updateMatches[1] ?? []));
 if ($currentVersion === '0.7.3' && !is_file($root . '/migrations/042_permission_menu_hierarchy.pgsql')) {
     $manifestMigrationNames = array_values(array_diff($manifestMigrationNames, ['042_permission_menu_hierarchy.pgsql']));
 }
@@ -377,12 +379,22 @@ $assert('generated lifecycle separates full install from guarded versioned updat
             throw new RuntimeException('update replays historical migration ' . $name);
         }
     }
-    if (in_array($currentVersion, ['0.7.6', '0.8.0'], true)) {
-        $preflightFile = $currentVersion === '0.8.0'
+    if (in_array($currentVersion, ['0.7.6', '0.8.0', '0.8.1'], true)) {
+        $preflightFile = in_array($currentVersion, ['0.8.0', '0.8.1'], true)
             ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
             : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
         $preflight = (string) file_get_contents($root . $preflightFile);
-        if ($update !== $preflight || !str_contains($update, 'BEGIN TRANSACTION READ ONLY;')
+        if (in_array($currentVersion, ['0.8.0', '0.8.1'], true)) {
+            $admission = str_replace('BEGIN TRANSACTION READ ONLY;', 'BEGIN;', $preflight);
+            $admission = substr($admission, 0, (int) strrpos($admission, "\nCOMMIT;") + 1);
+            if (!str_starts_with($update, $admission)
+                || !str_contains($update, '-- lifecycle source: migrations/043_scope_audit_event_key.pgsql')
+                || substr_count($update, "\nBEGIN;") !== 1
+                || substr_count($update, "\nCOMMIT;") !== 1
+                || preg_match('/^\s*(?:UPDATE|DELETE|TRUNCATE)\s/im', $update) === 1) {
+                throw new RuntimeException('0.8.0 update must atomically admit published073 and apply only043');
+            }
+        } elseif ($update !== $preflight || !str_contains($update, 'BEGIN TRANSACTION READ ONLY;')
             || !str_contains($update, 'exact published 0.7.3 ledger (001-042, 43 files)')
             || preg_match('/^\s*(?:INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|TRUNCATE)\s/im', $update) === 1) {
             throw new RuntimeException('Current update must only validate the complete published073 baseline read-only');
@@ -533,8 +545,8 @@ $assert('published 0.6.0 migration 021 remains byte-immutable in root and packag
     return true;
 });
 
-$assert('current read-only lifecycle generation preserves frozen SQL bytes', static function () use ($root, $currentVersion): bool {
-    if (!in_array($currentVersion, ['0.7.6', '0.8.0'], true)) return true;
+$assert('current lifecycle generation preserves frozen SQL bytes', static function () use ($root, $currentVersion): bool {
+    if (!in_array($currentVersion, ['0.7.6', '0.8.0', '0.8.1'], true)) return true;
     $output = [];
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/tools/build-lifecycle.php') . ' --check 2>&1', $output, $status);
     if ($status !== 0) throw new RuntimeException(implode("\n", $output));
@@ -558,7 +570,7 @@ $assert('migration ledger catalogs the published baseline and versioned migratio
         return false;
     }
     foreach ($manifestMigrationNames as $name) {
-        if (in_array($name, ['039_service_grant_nullable_data_class.pgsql', '040_passkey_auth_challenge_identity.pgsql', '041_authorization_scope_integrity.pgsql', '042_permission_menu_hierarchy.pgsql'], true)) {
+        if (in_array($name, ['039_service_grant_nullable_data_class.pgsql', '040_passkey_auth_challenge_identity.pgsql', '041_authorization_scope_integrity.pgsql', '042_permission_menu_hierarchy.pgsql', '043_scope_audit_event_key.pgsql'], true)) {
             continue;
         }
         if (!str_contains($ledger, "'{$name}'")) {
@@ -626,6 +638,14 @@ $assert('migration ledger catalogs the published baseline and versioned migratio
             || !str_contains($hierarchy, "SELECT '042_permission_menu_hierarchy.pgsql', 42")
             || !str_contains($hierarchy, '(SELECT count(*) FROM sand_iam_schema_migration) <> 43')
             || !str_contains($hierarchy, 'changed the logical role-permission set')) return false;
+    }
+    if (in_array('043_scope_audit_event_key.pgsql', $manifestMigrationNames, true)) {
+        $scope = (string) file_get_contents($root . '/migrations/043_scope_audit_event_key.pgsql');
+        if (preg_match("/WITH self_checksum\\(checksum\\) AS \\(VALUES \\('([0-9a-f]{64})'\\)\\)/", $scope, $checksum) !== 1
+            || hash('sha256', str_replace($checksum[1], '__SELF_SHA256__', $scope)) !== $checksum[1]
+            || !str_contains($scope, "SELECT '043_scope_audit_event_key.pgsql', 43")
+            || !str_contains($scope, '(SELECT count(*) FROM sand_iam_schema_migration) <> 44')
+            || !str_contains($scope, 'UNIQUE (request_id, action, event_key)')) return false;
     }
     return str_contains($ledger, 'migration ledger checksum or package-version conflict; refusing to continue')
         && str_contains($ledger, 'exact legacy or ledger-backed relation fingerprint is incompatible')

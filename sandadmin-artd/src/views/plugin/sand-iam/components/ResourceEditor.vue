@@ -28,6 +28,7 @@
     shouldSubmitSandIamField
   } from '../api/uxContracts'
   import ConditionEditor from './ConditionEditor.vue'
+  import BusinessActionSelect from './BusinessActionSelect.vue'
   import { activeClientAudience } from '../api/goalGuidance'
   import type {
     SandIamFormField,
@@ -56,6 +57,7 @@
 
   const form = reactive<Record<string, string | number | string[]>>({})
   const conditionErrors = reactive<Record<string, string>>({})
+  const businessActionErrors = reactive<Record<string, string>>({})
   const localValidationError = ref<string | null>(null)
   const displayedError = computed(() => localValidationError.value === null
     ? props.submitError
@@ -173,6 +175,7 @@
     localValidationError.value = null
     for (const key of Object.keys(form)) delete form[key]
     for (const key of Object.keys(conditionErrors)) delete conditionErrors[key]
+    for (const key of Object.keys(businessActionErrors)) delete businessActionErrors[key]
     for (const key of Object.keys(referenceOptions)) delete referenceOptions[key]
     for (const key of Object.keys(referenceLoading)) delete referenceLoading[key]
     for (const key of Object.keys(referenceError)) delete referenceError[key]
@@ -734,6 +737,13 @@
       if (embeddedReferenceReadOnly(field)) continue
       if (!shouldSubmitSandIamField(field, showAdvancedConfig.value)) continue
       const raw = form[field.key] ?? ''
+      if (field.kind === 'business-action') {
+        const error = businessActionErrors[field.key]
+        if (error !== '') throw new Error(error ?? '请等待业务动作目录加载完成并选择有效动作。')
+        if (typeof raw !== 'string' || raw === '') throw new Error('请选择业务动作。')
+        payload[field.key] = raw
+        continue
+      }
       if (field.kind === 'status') {
         payload[field.key] = raw === '2' ? 2 : 1
         continue
@@ -934,6 +944,14 @@
             :value="option.value"
           />
         </ElSelect>
+        <BusinessActionSelect
+          v-else-if="field.kind === 'business-action'"
+          :key="`${editorSession}-${field.key}`"
+          :model-value="textFieldValue(field.key)"
+          :application-id="normalizeReferenceValue(form.application_id)"
+          @update:model-value="(value: string) => setTextFieldValue(field.key, value)"
+          @validation="businessActionErrors[field.key] = $event"
+        />
         <ConditionEditor
           v-else-if="field.kind === 'condition'"
           :key="`${editorSession}-${field.key}`"

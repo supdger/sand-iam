@@ -6,7 +6,7 @@
     "repeat_build": "independent-git-stage",
     "dependency_strategy": "frozen-git-blobs",
     "vendor_baseline_commit": "0239981af57155c67af321c4255a33609eb7fed0",
-    "vendor_normalization": "Composer install from exact lock with COMPOSER_ROOT_VERSION=0.8.0; official dependency bytes retained; PHP platform 8.2.0."
+    "vendor_normalization": "Exact frozen dependency bytes retained; Composer root version metadata updated to 0.8.1 only; PHP platform 8.2.0."
   },
   "toolchain": {
     "php": "8.4.18",
@@ -21,7 +21,7 @@
     "lock_sha256": "5aafe4627aaa73ba1dd9cc55540852d58b200fd61f0f79750113a276561c21ca",
     "environment": {
       "COMPOSER_DISABLE_NETWORK": "1",
-      "COMPOSER_ROOT_VERSION": "0.8.0"
+      "COMPOSER_ROOT_VERSION": "0.8.1"
     },
     "arguments": [
       "install",
@@ -58,7 +58,7 @@
   "generated_payloads": {
     "plugin/sand-iam/vendor": {
       "file_count": 389,
-      "tree_sha256": "b2c84a0d19678bd5b75f6f233fb67d9a720d0885282b8cfd732f602e48d144c8"
+      "tree_sha256": "0c480446afe4839aff7cde2ccfa536566238a82b86554539fe9061d7fd3373fb"
     },
     "sdk/typescript/dist": {
       "file_count": 6,

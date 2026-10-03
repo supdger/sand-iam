@@ -5,7 +5,7 @@
   import { sandIamTaskPaths } from '../api/taskPaths'
   import { taskContextQuery } from '../api/taskContext'
   import { taskStepHelp } from '../api/taskInstructions'
-  import { resolveGuidanceGoal, guidanceQuery, nextGoalStep } from '../api/goalGuidance'
+  import { resolveGuidanceGoal, guidanceLocation, nextGoalStep } from '../api/goalGuidance'
   import type { TaskContext } from '../api/taskContext'
 
   const props = defineProps<{ readonly context: TaskContext }>()
@@ -17,7 +17,7 @@
   const goalNext = computed(() => goal.value && goalStep.value ? nextGoalStep(goal.value, goalStep.value.key) : undefined)
   const goalIndex = computed(() => goal.value?.steps.findIndex(item => item.key === goalStep.value?.key) ?? -1)
   function returnGoal(next = false): void {
-    if (goal.value) void router.push({ path: '/sand-iam/index', query: guidanceQuery(props.context, goal.value.id, next ? goalNext.value?.key : goalStep.value?.key, typeof route.query.method === 'string' ? route.query.method : undefined) })
+    if (goal.value) void router.push(guidanceLocation(props.context, goal.value.id, next ? goalNext.value?.key : goalStep.value?.key, typeof route.query.method === 'string' ? route.query.method : undefined))
   }
   const task = computed(() => route.query.task === 'people-access' || route.query.task === 'connection' ? route.query.task : null)
   const definition = computed(() => task.value === null ? null : sandIamTaskPaths[task.value])

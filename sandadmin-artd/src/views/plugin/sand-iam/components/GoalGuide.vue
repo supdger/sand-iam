@@ -10,6 +10,7 @@
   import type { SandIamResourceRow } from '../api/types'
   import { canUseGoal, guidanceGoal, guidanceGoals, guidanceQuery, resolveGuidanceGoal, goalStepParams } from '../api/goalGuidance'
   import type { GuidanceGoal, GoalStep } from '../api/goalGuidance'
+  import { newApplicationQuery } from '../getting-started/wizardEntry'
 
   const route = useRoute()
   const router = useRouter()
@@ -178,7 +179,7 @@
   }
   function selectMethod(value: string): void { if (goal.value) void router.replace({ path: route.path, query: guidanceQuery(context.value, goal.value.id, undefined, value) }) }
   function register(): void {
-    void router.push({ path: '/sand-iam/getting-started', query: guidanceQuery(context.value, goal.value?.id ?? '', undefined, method.value) })
+    void router.push({ path: '/sand-iam/getting-started', query: newApplicationQuery(context.value, goal.value?.id ?? '', method.value, crypto.randomUUID()) })
   }
   function changeGoal(): void { void router.replace({ path: route.path, query: guidanceQuery(context.value, '') }) }
   onMounted(async () => {
