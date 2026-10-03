@@ -6,22 +6,22 @@
     "repeat_build": "independent-git-stage",
     "dependency_strategy": "frozen-git-blobs",
     "vendor_baseline_commit": "0239981af57155c67af321c4255a33609eb7fed0",
-    "vendor_normalization": "Only vendor/composer/installed.php root package version normalized to 0.7.6; dependency bytes retained from official Git."
+    "vendor_normalization": "Composer install from exact lock with COMPOSER_ROOT_VERSION=0.8.0; official dependency bytes retained; PHP platform 8.2.0."
   },
   "toolchain": {
-    "php": "8.2.29",
+    "php": "8.4.18",
     "composer": "2.9.5",
     "node": "v24.11.1",
     "pnpm": "11.19.0",
     "typescript": "5.9.3",
-    "zip_extension": "1.21.1",
+    "zip_extension": "1.22.7",
     "libzip": "1.11.4"
   },
   "composer": {
-    "lock_sha256": "cb6457572b7e68697ae82b2a282dbf5e67cb4c0626b92696163123579eed9b88",
+    "lock_sha256": "5aafe4627aaa73ba1dd9cc55540852d58b200fd61f0f79750113a276561c21ca",
     "environment": {
       "COMPOSER_DISABLE_NETWORK": "1",
-      "COMPOSER_ROOT_VERSION": "0.7.6"
+      "COMPOSER_ROOT_VERSION": "0.8.0"
     },
     "arguments": [
       "install",
@@ -32,7 +32,12 @@
       "--no-interaction",
       "--no-plugins",
       "--no-scripts"
-    ]
+    ],
+    "casbin": {
+      "version": "v4.5.0",
+      "reference": "c856b5f9a009af6bc4679095a2095846a7629470",
+      "model_sha256": "2fdd3061d1753b46670a4714c9292299506e303c15157545502ebbf19236aea3"
+    }
   },
   "typescript": {
     "lock_sha256": "f8633dc2c3b6fa92d7be778f2365f375cdea0502d2054e07117fe02871c661df",
@@ -52,8 +57,8 @@
   },
   "generated_payloads": {
     "plugin/sand-iam/vendor": {
-      "file_count": 58,
-      "tree_sha256": "2386f641478cf2cced6be2030a5511376292051bfbbc50d5acf77ccfb6c3e8cd"
+      "file_count": 389,
+      "tree_sha256": "b2c84a0d19678bd5b75f6f233fb67d9a720d0885282b8cfd732f602e48d144c8"
     },
     "sdk/typescript/dist": {
       "file_count": 6,

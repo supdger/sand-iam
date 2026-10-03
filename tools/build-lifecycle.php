@@ -8,7 +8,7 @@ declare(strict_types=1);
  * SandPackage imports one statement whenever an input line ends in a
  * semicolon. It does not understand psql's \ir command and cannot keep a
  * multi-line DO block together. The generated files therefore contain every
- * migration inline. The076 profile retains the published fresh admission
+ * migration inline. The 0.7.6/0.8.0 profiles retains the published fresh admission
  * and raw base; the historical embedded073 profile retains its old folding.
  * Default/--check verifies bytes without writes; --output builds into a new
  * external directory. --profile=legacy-0.7.3 preserves the embedded42 baseline.
@@ -18,8 +18,8 @@ declare(strict_types=1);
 $options = getopt('', ['profile:', 'output:', 'check', 'write']);
 $root = dirname(__DIR__);
 $version = parse_ini_file($root . '/info.ini')['version'] ?? '';
-$profile = $options['profile'] ?? ($version === '0.7.6' ? '0.7.6' : 'legacy-0.7.3');
-if (!in_array($profile, ['0.7.6', 'legacy-0.7.3'], true)) throw new RuntimeException('Unsupported lifecycle profile');
+$profile = $options['profile'] ?? (in_array($version, ['0.7.6', '0.8.0'], true) ? $version : 'legacy-0.7.3');
+if (!in_array($profile, ['0.7.6', '0.8.0', 'legacy-0.7.3'], true)) throw new RuntimeException('Unsupported lifecycle profile');
 if (isset($options['output'], $options['write']) || isset($options['check'], $options['write'])) {
     throw new RuntimeException('Choose check, a new output directory, or explicit source write');
 }
@@ -347,7 +347,10 @@ SQL;
         . $inventoryHeader . "\n" . rtrim($admission) . "\n" . implode("\n", $inventoryLines)
         . $base;
     $install .= collapseDoBlocks(migrationPayload($sourceDirectory, array_slice($migrations, 4)));
-    $update = readRequired($root . '/lifecycle/update-073-or-075-to-076-preflight.pgsql');
+    $preflightFile = $profile === '0.8.0'
+        ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
+        : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
+    $update = readRequired($root . $preflightFile);
     $uninstall = "-- SandIAM uninstall lifecycle for the release package.\n"
         . readRequired($root . '/lifecycle/remove.pgsql');
 }

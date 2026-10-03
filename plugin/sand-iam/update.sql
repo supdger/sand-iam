@@ -1,4 +1,4 @@
--- SandIAM 0.7.3/0.7.5 -> 0.7.6: no schema or data changes.
+-- SandIAM 0.7.3/0.7.5/0.7.6 -> 0.8.0: no schema or data changes.
 -- The 43 expected rows are copied from the published 0.7.3 lifecycle ledger.
 -- In particular, revision 042 is 042_permission_menu_hierarchy.pgsql, never
 -- the conflicting 042_schema_semantics.pgsql from an unpublished branch.
@@ -11,7 +11,7 @@ DECLARE
     mismatch_count integer;
 BEGIN
     IF to_regclass(current_schema() || '.sand_iam_schema_migration') IS NULL THEN
-        RAISE EXCEPTION 'SandIAM 0.7.6 requires the published 0.7.3 migration ledger';
+        RAISE EXCEPTION 'SandIAM 0.8.0 requires the published 0.7.3 migration ledger';
     END IF;
     IF (SELECT count(*) FROM information_schema.columns
         WHERE table_schema = current_schema() AND table_name = 'sand_iam_schema_migration') <> 5
@@ -34,7 +34,7 @@ BEGIN
            WHERE table_schema = current_schema() AND table_name = 'sand_iam_schema_migration'
              AND column_name = 'executed_time' AND data_type = 'timestamp without time zone'
              AND is_nullable = 'NO') THEN
-        RAISE EXCEPTION 'SandIAM 0.7.6 requires the exact 0.7.3 ledger structure';
+        RAISE EXCEPTION 'SandIAM 0.8.0 requires the exact 0.7.3 ledger structure';
     END IF;
 
     SELECT pg_get_constraintdef(c.oid, true) INTO ledger_pk
@@ -44,7 +44,7 @@ BEGIN
     WHERE n.nspname = current_schema() AND t.relname = 'sand_iam_schema_migration'
       AND c.contype = 'p';
     IF ledger_pk IS DISTINCT FROM 'PRIMARY KEY (migration_file)' THEN
-        RAISE EXCEPTION 'SandIAM 0.7.6 requires the 0.7.3 ledger primary key';
+        RAISE EXCEPTION 'SandIAM 0.8.0 requires the 0.7.3 ledger primary key';
     END IF;
 
     WITH expected(migration_file, revision, checksum, package_version) AS (
@@ -104,14 +104,14 @@ BEGIN
     )
     SELECT count(*) INTO mismatch_count FROM difference;
     IF mismatch_count <> 0 OR (SELECT count(*) FROM sand_iam_schema_migration) <> 43 THEN
-        RAISE EXCEPTION 'SandIAM 0.7.6 requires the exact published 0.7.3 ledger (001-042, 43 files)';
+        RAISE EXCEPTION 'SandIAM 0.8.0 requires the exact published 0.7.3 ledger (001-042, 43 files)';
     END IF;
 
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns
         WHERE table_schema = current_schema() AND table_name = 'sand_iam_policy'
           AND column_name = 'action' AND data_type = 'character varying'
           AND character_maximum_length = 96) THEN
-        RAISE EXCEPTION 'SandIAM 0.7.6 requires the 0.7.3 policy action schema';
+        RAISE EXCEPTION 'SandIAM 0.8.0 requires the 0.7.3 policy action schema';
     END IF;
     IF (SELECT count(*) FROM pg_constraint c
         JOIN pg_class t ON t.oid = c.conrelid
@@ -129,11 +129,11 @@ BEGIN
             ('sand_iam_policy_version', 'fk_sand_iam_policy_version_rollback_owner'),
             ('sand_iam_policy', 'fk_sand_iam_policy_published_version_owner')
           )) <> 10 THEN
-        RAISE EXCEPTION 'SandIAM 0.7.6 requires the 0.7.3 ownership constraints';
+        RAISE EXCEPTION 'SandIAM 0.8.0 requires the 0.7.3 ownership constraints';
     END IF;
     IF (SELECT count(*) FROM sand_system_menu
         WHERE code = 'SandIAM' AND delete_time IS NULL) <> 1 THEN
-        RAISE EXCEPTION 'SandIAM 0.7.6 requires the 0.7.3 menu root';
+        RAISE EXCEPTION 'SandIAM 0.8.0 requires the 0.7.3 menu root';
     END IF;
 END $$;
 

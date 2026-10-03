@@ -180,7 +180,7 @@ export const grantFields: SandIamFormField[] = [
   field('audience', 'text', {
     required: true,
     placeholder: '例如：provider-b（以服务提供方为准）',
-    help: '从所选调用身份复制“服务受众”，并与服务提供方核对；必须逐字一致。创建后不能更改调用身份、服务动作或受众。'
+    help: '创建时从所选调用身份自动带入“服务受众”，请与服务提供方核对；无法读取时先重新选择身份，不凭名称猜测。必须逐字一致。创建后不能更改调用身份、服务动作或受众。'
   }),
   field('quota_policy', 'json', {
     advanced: true,

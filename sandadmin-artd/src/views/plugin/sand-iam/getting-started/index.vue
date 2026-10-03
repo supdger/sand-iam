@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import '../components/sandIamPage.css'
   import { computed, onMounted, onScopeDispose, reactive, ref, watch } from 'vue'
-  import { useRouter } from 'vue-router'
+  import { useRoute, useRouter } from 'vue-router'
   import { ElMessage } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
   import { describeSandIamError } from '../api/errors'
@@ -27,6 +27,9 @@
     type WizardScreen,
     type WizardStep
   } from './wizardState'
+
+  import { guidanceGoal, guidanceQuery } from '../api/goalGuidance'
+  import { parseTaskContext } from '../api/taskContext'
 
   type SetupGoal = 'people' | 'service' | 'event'
 
@@ -62,6 +65,8 @@
 
   const CONTEXT_KEY = 'sand-iam.getting-started.v1'
   const router = useRouter()
+  const route = useRoute()
+  const activeGoal = computed(() => guidanceGoal(route.query.goal))
   const { hasAuth } = useAuth()
   const steps: readonly StepDefinition[] = [
     {
@@ -138,6 +143,8 @@
     }
   ]
 
+  const needsEnvironment = computed(() => !activeGoal.value || activeGoal.value.id === 'machine')
+  const visibleSteps = computed(() => needsEnvironment.value ? steps : steps.filter(item => item.id !== 'environment'))
   const currentScreen = ref<WizardScreen>('organization')
   const selectedGoals = ref<SetupGoal[]>([])
   const records = reactive<Record<WizardStep, WizardRecord | null>>({
@@ -226,7 +233,7 @@
 
   function nextScreen(step: WizardStep): WizardScreen {
     if (step === 'organization') return 'application'
-    if (step === 'application') return 'environment'
+    if (step === 'application') return needsEnvironment.value ? 'environment' : 'complete'
     return 'complete'
   }
 
@@ -548,6 +555,27 @@
   }
 
   async function restoreContext(): Promise<void> {
+    // A goal may already carry an application. Re-read each record through the existing verifier.
+    if (route.query.application_id || route.query.organization_id) {
+      try {
+        const supplied = parseTaskContext(route.query)
+        if (supplied.application_id) {
+          const response = await readSandIamResource('application', supplied.application_id)
+          const application = isRecord(response) && isRecord(response.data) ? response.data : response
+          if (!isRecord(application) || positiveId(application.organization_id) === null) throw new Error('Invalid application')
+          supplied.organization_id = positiveId(application.organization_id) ?? undefined
+        }
+        for (const step of visibleSteps.value) {
+          const key = `${step.id}_id` as 'organization_id' | 'application_id' | 'environment_id'
+          const id = supplied[key]
+          if (id === undefined) { currentScreen.value = step.id; return }
+          const record = await verifyRecord(step.id, id)
+          if (!record || !applyVerifiedRecord(step.id, record)) { currentScreen.value = step.id; return }
+        }
+        currentScreen.value = 'complete'
+        return
+      } catch { pageMessage.value = '无法确认传入的应用，请重新选择已有记录。'; return }
+    }
     const context = parseWizardContext(storageAvailable()?.getItem(CONTEXT_KEY) ?? null, Date.now())
     if (context === null) {
       clearPersistedContext()
@@ -558,7 +586,7 @@
       phases[step.id] = context.phases[step.id]
       pendingCodes[step.id] = context.pendingCodes[step.id]
     }
-    for (const step of steps) {
+    for (const step of visibleSteps.value) {
       const id = ids[step.id]
       if (id === null) {
         currentScreen.value = step.id
@@ -584,6 +612,11 @@
     currentScreen.value = 'complete'
   }
 
+  function continueGoal(): void {
+    const context = { ...(ids.organization ? { organization_id: ids.organization } : {}), ...(ids.application ? { application_id: ids.application } : {}), ...(ids.environment ? { environment_id: ids.environment } : {}) }
+    void router.push({ path: '/sand-iam/index', query: guidanceQuery(context, activeGoal.value?.id ?? '', undefined, typeof route.query.method === 'string' ? route.query.method : undefined) })
+  }
+
   onMounted(() => {
     void restoreContext()
   })
@@ -595,19 +628,19 @@
     <ElCard class="sand-iam-page-card" shadow="never">
       <header class="sand-iam-getting-started__heading">
         <div>
-          <h2 class="m-0 text-lg font-semibold">第一次使用</h2>
+          <h2 class="m-0 text-lg font-semibold">登记公司与应用</h2>
           <p class="mb-0 mt-2 text-sm text-gray-500">
-            按“客户主体 → 接入应用 → 应用环境”完成本次设置。每一步都会重新确认刚才选择的记录。
+            {{ needsEnvironment ? '登记客户主体、应用与调用环境。' : '本目标只需登记客户主体和应用，暂不需要机器调用环境。' }}已有记录请直接选用；每一步会重新确认归属。
           </p>
         </div>
       </header>
       <ElSteps
         class="sand-iam-getting-started__steps"
-        :active="currentScreen === 'complete' ? 3 : stepIndex(currentScreen)"
+        :active="currentScreen === 'complete' ? visibleSteps.length : stepIndex(currentScreen)"
         finish-status="success"
       >
         <ElStep
-          v-for="step in steps"
+          v-for="step in visibleSteps"
           :key="step.id"
           :title="step.title"
           :status="stepStatus(step.id)"
@@ -741,10 +774,12 @@
       <section v-if="currentStep === null" class="sand-iam-getting-started__panel">
         <ElResult
           icon="success"
-          title="公司、应用和环境已登记"
+          :title="needsEnvironment ? '公司、应用和环境已登记' : '公司和应用已登记'"
           sub-title="接下来选择要完成的任务。员工登录和系统调用还需要配置与验证；下一步会保留本次应用和环境。"
         >
           <template #extra>
+            <ElButton type="primary" @click="continueGoal">{{ activeGoal ? `继续：${activeGoal.title}` : '返回目标引导' }}</ElButton>
+            <details v-if="!activeGoal"><summary>其他接入路径</summary>
             <ElCheckboxGroup v-model="selectedGoals" class="sand-iam-getting-started__goals"
               ><ElCheckbox v-for="goal in goals" :key="goal.value" :label="goal.value"
                 >{{ goal.title }}：{{ goal.description }}</ElCheckbox
@@ -769,8 +804,9 @@
             >
               没有入口权限时，请联系管理员开通相应管理范围。
             </p>
-            <ElButton :disabled="saving || verifying !== null" @click="goTo('environment')"
-              >返回修改环境</ElButton
+            </details>
+            <ElButton :disabled="saving || verifying !== null" @click="goTo(needsEnvironment ? 'environment' : 'application')"
+              >返回修改{{ needsEnvironment ? '环境' : '应用' }}</ElButton
             >
           </template>
         </ElResult>

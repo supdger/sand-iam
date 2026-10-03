@@ -1,6 +1,5 @@
 <script setup lang="ts">
   import { computed, nextTick, reactive, ref, watch } from 'vue'
-  import { ElMessage } from 'element-plus'
   import { parseConditionOrScope, parseJsonObject } from '../api/policyJson'
   import { listSandIamResource, listSandIamGrantCandidates } from '../api/resource'
   import { getSandIamAdmin, readSandIamResource } from '../api/write'
@@ -29,6 +28,7 @@
     shouldSubmitSandIamField
   } from '../api/uxContracts'
   import ConditionEditor from './ConditionEditor.vue'
+  import { activeClientAudience } from '../api/goalGuidance'
   import type {
     SandIamFormField,
     SandIamListParams,
@@ -56,11 +56,15 @@
 
   const form = reactive<Record<string, string | number | string[]>>({})
   const conditionErrors = reactive<Record<string, string>>({})
+  const localValidationError = ref<string | null>(null)
+  const displayedError = computed(() => localValidationError.value === null
+    ? props.submitError
+    : { title: '请检查填写内容', detail: localValidationError.value })
   const submitErrorElement = ref<HTMLDivElement | null>(null)
-  watch(() => props.submitError, async (error) => {
+  watch(displayedError, async (error) => {
     if (error === null || error === undefined || !props.modelValue) return
     await nextTick()
-    if (props.submitError !== error || !props.modelValue) return
+    if (displayedError.value !== error || !props.modelValue) return
     submitErrorElement.value?.focus({ preventScroll: true })
     submitErrorElement.value?.scrollIntoView({ block: 'nearest' })
   })
@@ -166,6 +170,7 @@
   }
 
   function resetForm(): void {
+    localValidationError.value = null
     for (const key of Object.keys(form)) delete form[key]
     for (const key of Object.keys(conditionErrors)) delete conditionErrors[key]
     for (const key of Object.keys(referenceOptions)) delete referenceOptions[key]
@@ -478,6 +483,21 @@
       if (!isActiveEditorSession(session) || referenceRequestId[field.key] !== requestId || context !== candidateContext(field)) {
         return
       }
+      if (field.key === 'organization_id' && describeSandIamError(error).http === 403) {
+        const applicationId = normalizeReferenceValue(form.application_id)
+        const organizationId = normalizeReferenceValue(form.organization_id)
+        if (applicationId !== null && organizationId !== null) {
+          const application = await referenceRow('application_id', 'application', session ?? editorSession)
+          if (!isActiveEditorSession(session) || referenceRequestId[field.key] !== requestId ||
+            context !== candidateContext(field) || normalizeReferenceValue(form.application_id) !== applicationId ||
+            normalizeReferenceValue(form.organization_id) !== organizationId) return
+          if (application?.organization_id === organizationId && typeof application.organization_name === 'string' && application.organization_name.trim() !== '') {
+            referenceOptions[field.key] = [{ value: organizationId, label: application.organization_name, row: { id: organizationId, name: application.organization_name } }]
+            referenceError[field.key] = ''
+            return
+          }
+        }
+      }
       referenceOptions[field.key] = []
       referenceError[field.key] = referenceLoadError(field, error)
     } finally {
@@ -531,6 +551,7 @@
       const client = await referenceRow('workload_client_id', 'client', session)
       if (!isActiveEditorSession(session)) return
       setReferenceId('environment_id', client?.environment_id, session)
+      if (props.creating && props.writeMode === 'grant') form.audience = activeClientAudience(client, normalizeReferenceValue(form.workload_client_id) ?? 0) ?? ''
 
       const identity = await referenceRow('identity_id', 'identity', session)
       if (!isActiveEditorSession(session)) return
@@ -637,6 +658,18 @@
       void loadReferenceOptions(editorSession)
     }
   )
+
+  watch(() => form.workload_client_id, async (value) => {
+    if (!props.modelValue || !props.creating || props.writeMode !== 'grant' || hydratingContext.value) return
+    const clientId = normalizeReferenceValue(value)
+    const session = editorSession
+    form.audience = ''
+    if (clientId === null) return
+    const row = await referenceRow('workload_client_id', 'client', session)
+    if (isActiveEditorSession(session) && normalizeReferenceValue(form.workload_client_id) === clientId) {
+      form.audience = activeClientAudience(row, clientId) ?? ''
+    }
+  })
 
   function parseNumber(raw: unknown, label: string, required: boolean): number | undefined {
     const value = typeof raw === 'number' ? String(raw) : raw
@@ -814,12 +847,13 @@
   }
 
   function submit(): void {
+    localValidationError.value = null
     try {
       const conditionError = Object.values(conditionErrors).find((message) => message !== '')
       if (conditionError) throw new Error(conditionError)
       emit('submit', buildPayload())
     } catch (error: unknown) {
-      ElMessage.error(error instanceof Error ? error.message : '表单填写有误，请检查后重试')
+      localValidationError.value = error instanceof Error ? error.message : '表单填写有误，请检查后重试'
     }
   }
 </script>
@@ -963,8 +997,8 @@
       </ElFormItem>
     </ElForm>
     <template #footer>
-      <div v-if="submitError" ref="submitErrorElement" tabindex="-1" role="alert" class="mb-3 text-left">
-        <ElAlert type="error" :closable="false" :title="submitError.title" :description="submitError.detail" />
+      <div v-if="displayedError" ref="submitErrorElement" tabindex="-1" role="alert" class="mb-3 text-left">
+        <ElAlert type="error" :closable="false" :title="displayedError.title" :description="displayedError.detail" />
       </div>
       <ElButton @click="emit('update:modelValue', false)">取消</ElButton>
       <ElButton type="primary" @click="submit">提交</ElButton>

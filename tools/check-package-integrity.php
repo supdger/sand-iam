@@ -264,7 +264,7 @@ if (is_string($builderSource)
     $updateSource = $updateMatch[1];
 }
 preg_match_all("/^\\s*'([0-9]{3}_[^']+\\.pgsql)',$/m", $updateSource, $updateMatches);
-$updateMigrationNames = $currentVersion === '0.7.6' ? [] : ($updateMatches[1] ?? []);
+$updateMigrationNames = in_array($currentVersion, ['0.7.6', '0.8.0'], true) ? [] : ($updateMatches[1] ?? []);
 if ($currentVersion === '0.7.3' && !is_file($root . '/migrations/042_permission_menu_hierarchy.pgsql')) {
     $manifestMigrationNames = array_values(array_diff($manifestMigrationNames, ['042_permission_menu_hierarchy.pgsql']));
 }
@@ -377,12 +377,15 @@ $assert('generated lifecycle separates full install from guarded versioned updat
             throw new RuntimeException('update replays historical migration ' . $name);
         }
     }
-    if ($currentVersion === '0.7.6') {
-        $preflight = (string) file_get_contents($root . '/lifecycle/update-073-or-075-to-076-preflight.pgsql');
+    if (in_array($currentVersion, ['0.7.6', '0.8.0'], true)) {
+        $preflightFile = $currentVersion === '0.8.0'
+            ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
+            : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
+        $preflight = (string) file_get_contents($root . $preflightFile);
         if ($update !== $preflight || !str_contains($update, 'BEGIN TRANSACTION READ ONLY;')
             || !str_contains($update, 'exact published 0.7.3 ledger (001-042, 43 files)')
             || preg_match('/^\s*(?:INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|TRUNCATE)\s/im', $update) === 1) {
-            throw new RuntimeException('0.7.6 update must only validate the complete published073 baseline read-only');
+            throw new RuntimeException('Current update must only validate the complete published073 baseline read-only');
         }
     } else {
         if ($updateMigrationNames !== [
@@ -530,8 +533,8 @@ $assert('published 0.6.0 migration 021 remains byte-immutable in root and packag
     return true;
 });
 
-$assert('current076 lifecycle generation preserves frozen SQL bytes', static function () use ($root, $currentVersion): bool {
-    if ($currentVersion !== '0.7.6') return true;
+$assert('current read-only lifecycle generation preserves frozen SQL bytes', static function () use ($root, $currentVersion): bool {
+    if (!in_array($currentVersion, ['0.7.6', '0.8.0'], true)) return true;
     $output = [];
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/tools/build-lifecycle.php') . ' --check 2>&1', $output, $status);
     if ($status !== 0) throw new RuntimeException(implode("\n", $output));

@@ -53,6 +53,7 @@ function sandIamCheckReleaseBuildContract(string $root, bool $reproduceToolchain
             if ($file->isLink()) throw new RuntimeException('Symlink in generated payload');
             if ($file->isFile()) {
                 $relative = sandIamFilesystemRelativePath(substr($file->getPathname(), strlen($absolute) + 1));
+                if (sandIamPayloadExcluded($directory . '/' . $relative)) continue;
                 if (isset($map[$relative])) throw new RuntimeException('Duplicate frozen dependency path');
                 $map[$relative] = hash_file('sha256', $file->getPathname());
             }

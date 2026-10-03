@@ -71,7 +71,17 @@ function sandIamPayloadExcluded(string $path): bool
     ], true)) {
         return true;
     }
-    return preg_match('#(?:^|/)(?:\.git|\.env(?:\.|$)|node_modules|\.pnpm-store|\.dart_tool|\.DS_Store|\.staging|\.tmp|\.backups|backups|artifacts|coverage|test-results|tests?|dist|build|cache|logs?|waiting-codex)(?:/|$)|(?:^|/)[^/]+\.(?:test|spec)\.[^/]+$|(?:^|/)(?:id_rsa|[^/]+\.(?:pem|key|log|dump))$#i', $path) === 1;
+    // These frozen Composer packages use cache/log as runtime namespaces.
+    // Mask only the confirmed dependency prefix; descendant tests, secrets,
+    // logs, caches and transient files still pass through the same exclusions.
+    foreach (['plugin/sand-iam/vendor/psr/cache', 'plugin/sand-iam/vendor/psr/log',
+        'plugin/sand-iam/vendor/symfony/cache', 'plugin/sand-iam/vendor/casbin/casbin/src/Log'] as $runtimePrefix) {
+        if ($path === $runtimePrefix || str_starts_with($path, $runtimePrefix . '/')) {
+            $path = 'plugin/sand-iam/vendor-runtime' . substr($path, strlen($runtimePrefix));
+            break;
+        }
+    }
+    return preg_match('#(?:^|/)(?:\.git|\.env(?:\.[^/]*)?|node_modules|\.pnpm-store|\.dart_tool|\.DS_Store|\.staging|\.tmp|\.backups|backups|artifacts|coverage|test-results|tests?|dist|build|cache|logs?|waiting-codex)(?:/|$)|(?:^|/)[^/]+\.(?:test|spec)\.[^/]+$|(?:^|/)(?:id_rsa|[^/]+\.(?:pem|key|log|dump))$#i', $path) === 1;
 }
 
 /**

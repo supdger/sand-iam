@@ -412,6 +412,15 @@
       if (disposed || referenceRequestId[key] !== requestId) return
       const described = describeSandIamError(error)
       if (described.http === 401) clearSensitiveState()
+      if (described.http === 403 && key === 'organization_id') {
+        const application = referenceOptions.application_id?.find(option => option.value === applicationId.value)
+        const organization = application ? organizationOptionFromApplication(application.row) : null
+        if (organization !== null && organization.value === organizationId.value) {
+          referenceOptions[key] = [organization]
+          referenceError[key] = ''
+          return
+        }
+      }
       referenceOptions[key] = []
       referenceError[key] =
         described.http === 403

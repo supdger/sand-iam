@@ -20,7 +20,10 @@ function sandIamCheckExistingSchema(string $root): void
         || $manifest['install_sql_sha256'] !== hash_file('sha256', $root . '/plugin/sand-iam/install.sql')) {
         throw new RuntimeException('existing-schema package identity or SQL digest mismatch');
     }
-    $preflight = (string) file_get_contents($root . '/lifecycle/update-073-or-075-to-076-preflight.pgsql');
+    $preflightFile = ($info['version'] ?? '') === '0.8.0'
+        ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
+        : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
+    $preflight = (string) file_get_contents($root . $preflightFile);
     preg_match_all("/\\('([0-9]{3}_[^']+\\.pgsql)', (\\d+), '([a-f0-9]{64})', '([^']+)'\\)/", $preflight, $matches, PREG_SET_ORDER);
     $rows = [];
     foreach ($matches as $match) {
