@@ -1,27 +1,34 @@
 # SandIAM
 
-SandIAM 是面向 SandAdmin 的 PostgreSQL 身份与访问管理插件，提供客户主体、应用、环境、身份、策略、服务授权与审计。它可独立安装，业务资源和规则由接入应用定义。
+SandIAM 是 SandAdmin 的身份与访问管理插件。管理员用它管理应用用户、角色、权限、服务调用凭证和审计；接入开发者将登录和授权能力接入自己的业务系统。
 
-当前源码版本为 `0.8.3` 待发布候选，推进按角色、权限与所选上下文识别可办理目标的管理端引导。`info.ini` 的宿主范围声明仍为 `0.1.x`；0.8.3 尚未公开发布，源码检查和本地审查包不代表宿主安装、前端激活或业务权限已验收。
+## 版本更新
 
-0.8.3 源码候选的应用用户策略使用 PHP-Casbin 内核；现有已发布策略、身份、角色和组配置继续复用。授权允许后，接入应用仍须落实返回的数据范围并在执行时复核实体；机器调用的凭据、服务授权、配额和实时撤销继续由 SandIAM 校验。本地模型、PostgreSQL 和审查 ZIP 验证与实际宿主安装验收分别记录，当前候选尚未发布。
+[Wiki 版本更新](https://github.com/supdger/sand-iam/wiki/Changelog)直接说明近期功能变化、修复和升级影响；[完整更新日志](CHANGELOG.md)保留逐版记录。下载与发布状态以[最新正式版](https://github.com/supdger/sand-iam/releases/latest)为准。
 
-公开下载入口为 [GitHub Releases](https://github.com/supdger/sand-iam/releases)。已公开的 `v0.7.6-preview` 提供 `sand-iam-0.7.6.zip`，属于历史 unsigned preview；下载后按同一 Release 的 `SHA256SUMS` 和构建清单核对。按 Wiki 的[包校验](https://github.com/supdger/sand-iam/wiki/Release-package-verification)核对来源、摘要与所需签名；没有所需签名材料时，不作为正式发行包使用。
+## 源码与安装包
 
-0.8.3 的标准升级接受完整历史 43 条账本的 `0.7.3` / `0.7.5` / `0.7.6` 和旧 `0.8.0` 安装，以及已经完成 043、拥有 44 条账本的 `0.8.1` / `0.8.2` 本地候选。旧 43 条路径先严格准入，再在同一事务执行原 `043_scope_audit_event_key.pgsql`；44 条路径严格核对每行账本与完整结构，仅校验，不执行 DDL 或重放 043。两条路径都不改写原审计事实，失败一起回滚。开始前取得对应宿主操作授权并完成可恢复备份；插件管理器更新管理端源码后，宿主仍需构建和激活前端。
+直接使用请下载 Release 附件中的完整 `sand-iam-<版本>.zip`，或在 SandAdmin 的“插件仓库”选择 SandIAM。GitHub 的 `Source code (zip)` 是源码压缩包，不是插件安装包。
 
-已有 SandIAM 表时，先按[既有表接入说明](docs/user-guide/installation-and-upgrade.md#接入已有-sandiam-表)核对账本和候选声明；接入 0.8.3 须匹配迁移 043 后的 44 条账本和新结构指纹，旧 43 条账本须先走标准升级，嵌入版 0.7.3 的 42 条账本须先完成受控桥接。当前源码的接入声明不改变已公开 preview ZIP，也不证明安装器正式发布了接入能力。
+本仓包含插件后端、管理端源码和安装生命周期。开发与构建见 [开发指南](https://github.com/supdger/sand-iam/wiki/Development)。
 
-0.8.3 源码候选从 SandIAM 总览的“这次要完成什么？”选择当前要办的目标，并按账号权限和所选应用继续；已有应用、身份或配置可复用；确需新应用且账号具备登记权限时，再登记。缺少权限时请对应管理员办理。管理员按当前步骤准备信息，接入开发者在实际应用或服务中验证登录、允许与拒绝、数据范围或撤销结果；后台保存记录不等于业务已经生效。公开 Wiki 的[第一次使用](https://github.com/supdger/sand-iam/wiki/First-use)仍是历史流程，0.8.3 的目标引导说明与候选一起准备，尚未公开发布。
+## 安装与第一次使用
 
-完整使用说明见 [SandIAM Wiki](https://github.com/supdger/sand-iam/wiki)：
+需要已有的 SandAdmin PostgreSQL 宿主、SandPackage，以及有权安装插件和管理应用的账号。宿主兼容范围、运行环境和包校验要求见[安装与升级](https://github.com/supdger/sand-iam/wiki/Installation-and-upgrade)；安装或升级前备份已有数据。
 
-- [包校验](https://github.com/supdger/sand-iam/wiki/Release-package-verification)、[安装与升级](https://github.com/supdger/sand-iam/wiki/Installation-and-upgrade)、[第一次使用](https://github.com/supdger/sand-iam/wiki/First-use)；
-- [管理员](https://github.com/supdger/sand-iam/wiki/Administrator-guide)、[应用用户](https://github.com/supdger/sand-iam/wiki/Application-user-guide)、[业务接入](https://github.com/supdger/sand-iam/wiki/Application-integration)；
-- [配置](https://github.com/supdger/sand-iam/wiki/Configuration-reference)、[安全](https://github.com/supdger/sand-iam/wiki/Security-hardening)、[备份恢复](https://github.com/supdger/sand-iam/wiki/Backup-and-restore)、[排障](https://github.com/supdger/sand-iam/wiki/Troubleshooting)。
+1. 在 SandAdmin“插件仓库”选择 SandIAM，或上传完整安装 ZIP，核对安装计划后安装。
+2. 按安装指南完成配置，并由宿主管理员构建、激活包内管理端源码。安装器报告成功后，重新登录并打开 **SandIAM → 总览**。
+3. 在“这次要完成什么？”中选择目标，例如“让用户登录应用”。复用已有应用，按页面引导完成登录配置与账号开通，再到该应用的登录入口验证。
 
-使用 SandPackage 安装完整 ZIP，安装前备份；不要只复制插件子目录、创建数据库或手工重放生命周期 SQL。凭证和密钥只通过受控运行环境注入，所有业务授权须验证允许、拒绝、撤销和审计。
+第一次登录的可确认结果是：正确密码能登录，错误密码被拒绝，退出后旧会话不能继续访问。缺少菜单或办理权限时联系宿主管理员；详细步骤见[第一次使用](https://github.com/supdger/sand-iam/wiki/First-use)。
 
-贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题按 [SECURITY.md](SECURITY.md) 私下报告，变化见 [CHANGELOG.md](CHANGELOG.md)。正式包的锁文件、生成范围与来源证明见 [release-build-contract.json](release-build-contract.json)。
+## 使用文档
 
-项目按 [Apache-2.0](LICENSE) 分发，版权见 [NOTICE](NOTICE)，第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- [Wiki 首页](https://github.com/supdger/sand-iam/wiki)：按管理员、应用用户和接入开发者的任务选择指南。
+- [管理员操作](https://github.com/supdger/sand-iam/wiki/Administrator-guide)、[应用用户操作](https://github.com/supdger/sand-iam/wiki/Application-user-guide)：管理应用与使用自己的账号。
+- [业务接入](https://github.com/supdger/sand-iam/wiki/Application-integration)：接入登录、授权与数据范围。
+- [配置](https://github.com/supdger/sand-iam/wiki/Configuration-reference)、[备份恢复](https://github.com/supdger/sand-iam/wiki/Backup-and-restore)、[排障](https://github.com/supdger/sand-iam/wiki/Troubleshooting)：部署与维护。
+
+## 许可与反馈
+
+项目按 [Apache-2.0](LICENSE) 分发，版权与第三方许可见 [NOTICE](NOTICE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题按 [SECURITY.md](SECURITY.md) 私下报告；问题与建议请提交到 [Issues](https://github.com/supdger/sand-iam/issues)。
