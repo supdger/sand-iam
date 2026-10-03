@@ -26,7 +26,7 @@
 
 ## 真实调用与撤销复查
 
-先按[管理员配置单](../../../docs/user-guide/sand-iam-operator-guide.md#第四条调用身份服务授权凭证和调用)登记服务动作、调用身份、授权和凭证。这里的受众是 `provider-b`，不是 `PROVIDER_B_BASE_URL`。对照 `.env.example` 将实际地址、公司/应用代码、数据库连接、凭证及一次业务操作的稳定幂等键注入受控运行环境；数据库连接和凭证都不打印。
+先按[管理员配置单](https://github.com/supdger/sand-iam/wiki/Administrator-guide#第四条调用身份服务授权凭证和调用)登记服务动作、调用身份、授权和凭证。这里的受众是 `provider-b`，不是 `PROVIDER_B_BASE_URL`。对照 `.env.example` 将实际地址、公司/应用代码、数据库连接、凭证及一次业务操作的稳定幂等键注入受控运行环境；数据库连接和凭证都不打印。
 
 服务提供方准备本公司实际测试文档，并把其 ID 交给调用工程师。下列命令在 `provider/` 目录执行，`PROVIDER_B_DOCUMENT_ID` 由该 ID 设置，不代表示例已有文档：
 

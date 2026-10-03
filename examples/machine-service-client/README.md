@@ -11,7 +11,7 @@
 
 ## 管理员与开发者使用同一份配置单
 
-完整非 AI 例子选择现有 Provider B：服务代码 `provider-b-document`、受众 `provider-b`、动作 `document.process`。服务提供方先部署并登记该服务与动作，给出实际 HTTPS 地址及所属公司的测试文档编号。管理员按[服务配置步骤](../../docs/user-guide/sand-iam-operator-guide.md#第四条调用身份服务授权凭证和调用)为 `example-company / work-items / test` 下的 `backend` 调用身份填写相同受众，授权该动作，再签发凭证。
+完整非 AI 例子选择现有 Provider B：服务代码 `provider-b-document`、受众 `provider-b`、动作 `document.process`。服务提供方先部署并登记该服务与动作，给出实际 HTTPS 地址及所属公司的测试文档编号。管理员按[服务配置步骤](https://github.com/supdger/sand-iam/wiki/Administrator-guide#第四条调用身份服务授权凭证和调用)为 `example-company / work-items / test` 下的 `backend` 调用身份填写相同受众，授权该动作，再签发凭证。
 
 凭证交给对应应用测试环境的技术负责人；同时交接公司、应用、环境、身份名称、受众、服务动作、到期时间和目标地址。秘密进密钥管理系统，非秘密配置可单独核对。`service_code`、受众和 HTTP 地址是三个不同值，不能都填服务网址。
 

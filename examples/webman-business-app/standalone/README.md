@@ -5,7 +5,7 @@ SandAdmin 插件、不会创建数据库或表，也没有默认账号、token �
 
 ## 完整填写与账号准备
 
-此 consumer 有 HTTP 工作项接口，没有员工可点击的列表页面。先按[管理员工作项例子](../../../docs/user-guide/sand-iam-operator-guide.md#给两名员工开通账号并分配工作项权限)完成账号和权限，再由开发者联调。
+此 consumer 有 HTTP 工作项接口，没有员工可点击的列表页面。先按[管理员工作项例子](https://github.com/supdger/sand-iam/wiki/Administrator-guide#给两名员工开通账号并分配工作项权限)完成账号和权限，再由开发者联调。
 
 | 配置 | 演示填写值 | 输入来源 |
 | --- | --- | --- |
