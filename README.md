@@ -14,7 +14,7 @@ SandIAM 是 SandAdmin 的身份与访问管理插件。管理员用它管理应�
 
 ## 安装与第一次使用
 
-需要已有的 SandAdmin PostgreSQL 宿主、SandPackage，以及有权安装插件和管理应用的账号。宿主兼容范围、运行环境和包校验要求见[安装与升级](https://github.com/supdger/sand-iam/wiki/Installation-and-upgrade)；安装或升级前备份已有数据。
+需要已有的 SandAdmin `>=0.1.0` PostgreSQL 宿主、SandPackage，以及有权安装插件和管理应用的账号。宿主兼容范围、运行环境和包校验要求见[安装与升级](https://github.com/supdger/sand-iam/wiki/Installation-and-upgrade)；安装或升级前备份已有数据。
 
 1. 在 SandAdmin“插件仓库”选择 SandIAM，或上传完整安装 ZIP，核对安装计划后安装。
 2. 按安装指南完成配置，并由宿主管理员构建、激活包内管理端源码。安装器报告成功后，重新登录并打开 **SandIAM → 总览**。
