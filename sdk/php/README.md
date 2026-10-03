@@ -1,6 +1,6 @@
 # SandIAM PHP SDK
 
-本 SDK 用于应用后端；管理员、应用用户和后端调用凭证分别使用不同接口。第一次接入人员登录从下面的最小程序开始；后台开通方式见[管理员说明](../../docs/user-guide/sand-iam-operator-guide.md)，HTTP 参数见[业务接入](../../docs/user-guide/application-integration.md)。
+本 SDK 用于应用后端；管理员、应用用户和后端调用凭证分别使用不同接口。第一次接入人员登录从下面的最小程序开始；后台开通方式见[管理员说明](https://github.com/supdger/sand-iam/wiki/Administrator-guide)，HTTP 参数见[业务接入](https://github.com/supdger/sand-iam/wiki/Application-integration)。
 
 ## 人员登录与首次鉴权
 

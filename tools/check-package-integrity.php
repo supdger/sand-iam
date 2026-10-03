@@ -718,15 +718,6 @@ $requiredFiles = [
     'SDK and user-facing documentation' => [
         '../../sdk/dart/README.md', '../../sdk/php/composer.json', '../../sdk/typescript/package.json',
         '../../README.md', '../../CONTRIBUTING.md', '../../SECURITY.md', '../../LICENSE', '../../NOTICE', '../../THIRD_PARTY_NOTICES.md', '../../release-build-contract.json',
-        '../../docs/user-guide/sand-iam-first-connection.md',
-        '../../docs/user-guide/sand-iam-operator-guide.md',
-        '../../docs/user-guide/installation-and-upgrade.md',
-        '../../docs/user-guide/configuration-reference.md',
-        '../../docs/user-guide/application-integration.md',
-        '../../docs/user-guide/application-user-guide.md',
-        '../../docs/user-guide/security-hardening.md',
-        '../../docs/user-guide/backup-and-restore.md',
-        '../../docs/user-guide/troubleshooting.md',
     ],
 ];
 foreach ($requiredFiles as $area => $files) {
