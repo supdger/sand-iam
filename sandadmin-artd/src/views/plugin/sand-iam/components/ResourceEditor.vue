@@ -1,6 +1,5 @@
 <script setup lang="ts">
-  import { computed, reactive, ref, watch } from 'vue'
-  import { ElMessage } from 'element-plus'
+  import { computed, nextTick, reactive, ref, watch } from 'vue'
   import { parseConditionOrScope, parseJsonObject } from '../api/policyJson'
   import { listSandIamResource, listSandIamGrantCandidates } from '../api/resource'
   import { getSandIamAdmin, readSandIamResource } from '../api/write'
@@ -29,10 +28,13 @@
     shouldSubmitSandIamField
   } from '../api/uxContracts'
   import ConditionEditor from './ConditionEditor.vue'
+  import BusinessActionSelect from './BusinessActionSelect.vue'
+  import { activeClientAudience } from '../api/goalGuidance'
   import type {
     SandIamFormField,
     SandIamListParams,
     SandIamResourceRow,
+    SandIamRequestError,
     SandIamWriteMode
   } from '../api/types'
 
@@ -42,6 +44,8 @@
     readonly fields: readonly SandIamFormField[]
     readonly creating: boolean
     readonly row: SandIamResourceRow | null
+    readonly initialValues?: Readonly<Record<string, number>>
+    readonly submitError?: SandIamRequestError | null
     readonly writeMode: SandIamWriteMode
   }
 
@@ -52,6 +56,20 @@
   }>()
 
   const form = reactive<Record<string, string | number | string[]>>({})
+  const conditionErrors = reactive<Record<string, string>>({})
+  const businessActionErrors = reactive<Record<string, string>>({})
+  const localValidationError = ref<string | null>(null)
+  const displayedError = computed(() => localValidationError.value === null
+    ? props.submitError
+    : { title: '请检查填写内容', detail: localValidationError.value })
+  const submitErrorElement = ref<HTMLDivElement | null>(null)
+  watch(displayedError, async (error) => {
+    if (error === null || error === undefined || !props.modelValue) return
+    await nextTick()
+    if (displayedError.value !== error || !props.modelValue) return
+    submitErrorElement.value?.focus({ preventScroll: true })
+    submitErrorElement.value?.scrollIntoView({ block: 'nearest' })
+  })
   const referenceOptions = reactive<Record<string, ReferenceOption[]>>({})
   const referenceLoading = reactive<Record<string, boolean>>({})
   const referenceError = reactive<Record<string, string>>({})
@@ -154,12 +172,16 @@
   }
 
   function resetForm(): void {
+    localValidationError.value = null
     for (const key of Object.keys(form)) delete form[key]
+    for (const key of Object.keys(conditionErrors)) delete conditionErrors[key]
+    for (const key of Object.keys(businessActionErrors)) delete businessActionErrors[key]
     for (const key of Object.keys(referenceOptions)) delete referenceOptions[key]
     for (const key of Object.keys(referenceLoading)) delete referenceLoading[key]
     for (const key of Object.keys(referenceError)) delete referenceError[key]
     for (const field of props.fields) {
-      form[field.key] = fieldString(props.creating ? null : props.row, field)
+      const initial = props.initialValues?.[field.key] === undefined ? null : props.initialValues
+      form[field.key] = fieldString(props.creating ? initial ?? null : props.row, field)
     }
     lastDependencyValues = dependencyValues()
     showAdvancedConfig.value = false
@@ -464,6 +486,21 @@
       if (!isActiveEditorSession(session) || referenceRequestId[field.key] !== requestId || context !== candidateContext(field)) {
         return
       }
+      if (field.key === 'organization_id' && describeSandIamError(error).http === 403) {
+        const applicationId = normalizeReferenceValue(form.application_id)
+        const organizationId = normalizeReferenceValue(form.organization_id)
+        if (applicationId !== null && organizationId !== null) {
+          const application = await referenceRow('application_id', 'application', session ?? editorSession)
+          if (!isActiveEditorSession(session) || referenceRequestId[field.key] !== requestId ||
+            context !== candidateContext(field) || normalizeReferenceValue(form.application_id) !== applicationId ||
+            normalizeReferenceValue(form.organization_id) !== organizationId) return
+          if (application?.organization_id === organizationId && typeof application.organization_name === 'string' && application.organization_name.trim() !== '') {
+            referenceOptions[field.key] = [{ value: organizationId, label: application.organization_name, row: { id: organizationId, name: application.organization_name } }]
+            referenceError[field.key] = ''
+            return
+          }
+        }
+      }
       referenceOptions[field.key] = []
       referenceError[field.key] = referenceLoadError(field, error)
     } finally {
@@ -517,6 +554,7 @@
       const client = await referenceRow('workload_client_id', 'client', session)
       if (!isActiveEditorSession(session)) return
       setReferenceId('environment_id', client?.environment_id, session)
+      if (props.creating && props.writeMode === 'grant') form.audience = activeClientAudience(client, normalizeReferenceValue(form.workload_client_id) ?? 0) ?? ''
 
       const identity = await referenceRow('identity_id', 'identity', session)
       if (!isActiveEditorSession(session)) return
@@ -624,6 +662,18 @@
     }
   )
 
+  watch(() => form.workload_client_id, async (value) => {
+    if (!props.modelValue || !props.creating || props.writeMode !== 'grant' || hydratingContext.value) return
+    const clientId = normalizeReferenceValue(value)
+    const session = editorSession
+    form.audience = ''
+    if (clientId === null) return
+    const row = await referenceRow('workload_client_id', 'client', session)
+    if (isActiveEditorSession(session) && normalizeReferenceValue(form.workload_client_id) === clientId) {
+      form.audience = activeClientAudience(row, clientId) ?? ''
+    }
+  })
+
   function parseNumber(raw: unknown, label: string, required: boolean): number | undefined {
     const value = typeof raw === 'number' ? String(raw) : raw
     if (typeof value !== 'string' || value.trim() === '') {
@@ -687,6 +737,13 @@
       if (embeddedReferenceReadOnly(field)) continue
       if (!shouldSubmitSandIamField(field, showAdvancedConfig.value)) continue
       const raw = form[field.key] ?? ''
+      if (field.kind === 'business-action') {
+        const error = businessActionErrors[field.key]
+        if (error !== '') throw new Error(error ?? '请等待业务动作目录加载完成并选择有效动作。')
+        if (typeof raw !== 'string' || raw === '') throw new Error('请选择业务动作。')
+        payload[field.key] = raw
+        continue
+      }
       if (field.kind === 'status') {
         payload[field.key] = raw === '2' ? 2 : 1
         continue
@@ -800,10 +857,13 @@
   }
 
   function submit(): void {
+    localValidationError.value = null
     try {
+      const conditionError = Object.values(conditionErrors).find((message) => message !== '')
+      if (conditionError) throw new Error(conditionError)
       emit('submit', buildPayload())
     } catch (error: unknown) {
-      ElMessage.error(error instanceof Error ? error.message : '表单填写有误，请检查后重试')
+      localValidationError.value = error instanceof Error ? error.message : '表单填写有误，请检查后重试'
     }
   }
 </script>
@@ -884,11 +944,21 @@
             :value="option.value"
           />
         </ElSelect>
+        <BusinessActionSelect
+          v-else-if="field.kind === 'business-action'"
+          :key="`${editorSession}-${field.key}`"
+          :model-value="textFieldValue(field.key)"
+          :application-id="normalizeReferenceValue(form.application_id)"
+          @update:model-value="(value: string) => setTextFieldValue(field.key, value)"
+          @validation="businessActionErrors[field.key] = $event"
+        />
         <ConditionEditor
           v-else-if="field.kind === 'condition'"
+          :key="`${editorSession}-${field.key}`"
           :model-value="textFieldValue(field.key)"
           @update:model-value="(value: unknown) => setTextFieldValue(field.key, value)"
           :label="field.label"
+          @validation="conditionErrors[field.key] = $event"
         />
         <ElDatePicker
           v-else-if="field.kind === 'datetime'"
@@ -945,6 +1015,9 @@
       </ElFormItem>
     </ElForm>
     <template #footer>
+      <div v-if="displayedError" ref="submitErrorElement" tabindex="-1" role="alert" class="mb-3 text-left">
+        <ElAlert type="error" :closable="false" :title="displayedError.title" :description="displayedError.detail" />
+      </div>
       <ElButton @click="emit('update:modelValue', false)">取消</ElButton>
       <ElButton type="primary" @click="submit">提交</ElButton>
     </template>

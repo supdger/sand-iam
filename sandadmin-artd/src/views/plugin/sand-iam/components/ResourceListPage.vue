@@ -1,6 +1,7 @@
 <script setup lang="ts">
   import './sandIamPage.css'
-  import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+  import { useRoute } from 'vue-router'
   import { ElMessage, ElMessageBox } from 'element-plus'
   import { useAuth } from '@/hooks/core/useAuth'
   import { describeSandIamError } from '../api/errors'
@@ -24,6 +25,10 @@
     updateSandIamResource
   } from '../api/write'
   import ResourceEditor from './ResourceEditor.vue'
+  import TaskContinuation from './TaskContinuation.vue'
+  import { parseTaskContext, taskContextKeys, verifyTaskContext } from '../api/taskContext'
+  import type { TaskContext } from '../api/taskContext'
+  import { readSandIamResource } from '../api/write'
   import PolicyHistory from './PolicyHistory.vue'
   import type {
     SandIamFilterKey,
@@ -42,6 +47,8 @@
     readonly description: string
     readonly createTitle?: string
     readonly objectHint?: string
+    readonly saveSuccessMessage?: string
+    readonly publishSuccessMessage?: string
     readonly endpoint: SandIamResourceEndpoint
     readonly indexPermission: string
     readonly permissionPrefix: string
@@ -58,6 +65,8 @@
   const props = withDefaults(defineProps<Props>(), {
     createTitle: '',
     objectHint: '',
+    saveSuccessMessage: '已保存',
+    publishSuccessMessage: '已发布',
     formFields: () => [],
     writeMode: 'crud',
     requireIdentityId: false,
@@ -66,6 +75,12 @@
   })
 
   const { hasAuth } = useAuth()
+  const route = useRoute()
+  const contextError = ref('')
+  const initialValues = ref<Readonly<Record<string, number>>>({})
+  const issuedSummary = ref<string[]>([])
+  let restoringContext = false
+  let contextVersion = 0
   const rows = ref<SandIamResourceRow[]>([])
   const total = ref(0)
   const currentPage = ref(1)
@@ -75,6 +90,7 @@
   let disposed = false
   let listRequestId = 0
   const requestError = ref<SandIamRequestError | null>(null)
+  const editorSubmitError = ref<SandIamRequestError | null>(null)
   const editorOpen = ref(false)
   const creating = ref(true)
   const editingRow = ref<SandIamResourceRow | null>(null)
@@ -225,6 +241,7 @@
   }
 
   function parentReferenceKey(key: string): string | null {
+    if (key === 'identity_id' && props.filters.includes('application_id')) return 'application_id'
     if (key === 'application_id') return 'organization_id'
     if (key === 'environment_id') return 'application_id'
     if (key === 'workload_client_id') return 'environment_id'
@@ -292,6 +309,10 @@
   }
 
   function referenceParams(key: string, keywords = ''): SandIamListParams | null {
+    if (key === 'identity_id' && props.filters.includes('application_id')) {
+      const application = parsePositiveInt(applicationId.value)
+      return application === null ? null : { page: 1, limit: 100, application_id: application, keywords }
+    }
     if (props.writeMode === 'relation' && key === props.relationGrantField) {
       const identity = referenceOptions.identity_id?.find(
         (option) => option.value === identityId.value
@@ -395,6 +416,15 @@
       if (disposed || referenceRequestId[key] !== requestId) return
       const described = describeSandIamError(error)
       if (described.http === 401) clearSensitiveState()
+      if (described.http === 403 && key === 'organization_id') {
+        const application = referenceOptions.application_id?.find(option => option.value === applicationId.value)
+        const organization = application ? organizationOptionFromApplication(application.row) : null
+        if (organization !== null && organization.value === organizationId.value) {
+          referenceOptions[key] = [organization]
+          referenceError[key] = ''
+          return
+        }
+      }
       referenceOptions[key] = []
       referenceError[key] =
         described.http === 403
@@ -631,11 +661,18 @@
 
   function openCreate(): void {
     if (writeBusy() || !showWrites.value || props.writeMode === 'relation' || !canSave.value) return
+    editorSubmitError.value = null
     editorVersion++
     editorQuery = JSON.stringify(buildParams())
     editorListVersion = listRequestId
     creating.value = true
     editingRow.value = null
+    const defaults: Record<string, number> = {}
+    for (const key of taskContextKeys) {
+      const id = parsePositiveInt(selectedReferenceValue(key))
+      if (id !== null && props.formFields.some(field => field.key === key)) defaults[key] = id
+    }
+    initialValues.value = defaults
     editorRowId = null
     editorOpen.value = true
   }
@@ -643,6 +680,7 @@
   function openEdit(row: SandIamResourceRow): void {
     if (writeBusy() || !showWrites.value || props.writeMode === 'credential' ||
       props.writeMode === 'relation' || !canUpdate.value || !rows.value.includes(row) || rowId(row) === null) return
+    editorSubmitError.value = null
     editorVersion++
     editorQuery = JSON.stringify(buildParams())
     editorListVersion = listRequestId
@@ -652,7 +690,7 @@
     editorOpen.value = true
   }
 
-  function captureIssuedSecret(value: unknown): void {
+  function captureIssuedSecret(value: unknown, owner: TaskContext = {}): void {
     const record = isRecord(value) && isRecord(value.data) ? value.data : value
     if (!isRecord(record)) return
     const secret =
@@ -664,6 +702,21 @@
     if (secret === null || secret.trim() === '') return
     issuedSecret.value = secret
     credentialDialogOpen.value = true
+    issuedSummary.value = ['正在核对凭证归属…']
+    void verifyTaskContext(owner, readSandIamResource).then(verified => {
+      if (disposed || issuedSecret.value !== secret) return
+      issuedSummary.value = taskContextKeys.filter(key => verified.context[key] !== undefined).map(key => {
+        const row = verified.rows[key]
+        const name = typeof row?.name === 'string' ? row.name : `编号 ${String(verified.context[key])}`
+        return `${sandIamFieldLabel(key)}：${name}`
+      })
+      if (issuedSummary.value.length === 0) issuedSummary.value = ['请在交付前核对刚签发的对象归属。']
+    }).catch(() => {
+      if (!disposed && issuedSecret.value === secret) issuedSummary.value = [
+        '暂时无法读取完整归属；请保留当前窗口，核对所选调用身份后再交付。',
+        ...taskContextKeys.filter(key => owner[key] !== undefined).map(key => `${sandIamFieldLabel(key)}编号：${String(owner[key])}`)
+      ]
+    })
   }
 
   async function copyIssuedSecret(): Promise<void> {
@@ -678,6 +731,7 @@
 
   function clearSensitiveState(): void {
     issuedSecret.value = null
+    issuedSummary.value = []
     credentialDialogOpen.value = false
   }
 
@@ -720,7 +774,7 @@
   }
 
   function writeBusy(): boolean {
-    return disposed || loading.value || saving.value || actionConfirming.value || relationConfirming.value
+    return disposed || restoringContext || loading.value || saving.value || actionConfirming.value || relationConfirming.value
   }
 
   function supportsStatusWrite(): boolean {
@@ -741,7 +795,8 @@
     successText: string,
     describeError: (error: unknown) => SandIamRequestError = describeSandIamError,
     issuesSecret = false,
-    isCurrent: () => boolean = () => true
+    isCurrent: () => boolean = () => true,
+    secretOwner: TaskContext = {}
   ): Promise<void> {
     if (disposed || saving.value) return
     if (issuesSecret && issuedSecret.value !== null) {
@@ -750,12 +805,13 @@
     }
     saving.value = true
     requestError.value = null
+    editorSubmitError.value = null
     try {
       const result = await task()
       if (disposed) return
-      if (issuesSecret) captureIssuedSecret(result)
+      if (issuesSecret) captureIssuedSecret(result, secretOwner)
       if (!isCurrent()) return
-      if (!issuesSecret) captureIssuedSecret(result)
+      if (!issuesSecret) captureIssuedSecret(result, secretOwner)
       editorOpen.value = false
       ElMessage.success(successText)
       await load()
@@ -766,6 +822,7 @@
         clearSensitiveState()
       }
       requestError.value = described
+      if (editorOpen.value) editorSubmitError.value = described
     } finally {
       if (!disposed) saving.value = false
     }
@@ -791,23 +848,25 @@
     const current = () => version === editorVersion && editorOpen.value &&
       editorQuery === JSON.stringify(buildParams()) && editorListVersion === listRequestId
     if (props.writeMode === 'credential') {
-      await runWrite(() => postSandIamAction('credential/issue', payload), '凭证已签发', undefined, true, current)
+      await runWrite(() => postSandIamAction('credential/issue', payload), '凭证已签发', undefined, true, current,
+        typeof payload.workload_client_id === 'number' ? { workload_client_id: payload.workload_client_id } : {})
       return
     }
     if (creating.value) {
       const isEnvironmentCreation = props.endpoint === 'environment'
       await runWrite(
-        () => saveSandIamResource(props.endpoint, payload, !isEnvironmentCreation),
-        '已保存',
+        () => saveSandIamResource(props.endpoint, payload, false),
+        props.saveSuccessMessage,
         isEnvironmentCreation ? describeEnvironmentEditorSaveError : undefined,
         props.writeMode === 'oauth-client',
-        current
+        current,
+        typeof payload.application_id === 'number' ? { application_id: payload.application_id } : {}
       )
       return
     }
     const id = editorRowId
     if (id === null || original === null || rowId(original) !== id) return
-    await runWrite(() => updateSandIamResource(props.endpoint, { ...payload, id }), '已保存', undefined, false, current)
+    await runWrite(() => updateSandIamResource(props.endpoint, { ...payload, id }, false), props.saveSuccessMessage, undefined, false, current)
   }
 
   async function confirmDisable(row: SandIamResourceRow): Promise<void> {
@@ -896,7 +955,7 @@
     const successText = title.includes('撤销')
       ? '已撤销'
       : title.includes('发布')
-        ? '已发布'
+        ? props.publishSuccessMessage
         : title.includes('轮换')
           ? '已轮换'
           : '已保存'
@@ -938,7 +997,9 @@
       if (!allowed()) return
       // 轮换响应中的一次性密钥必须交付；换页后仍由 runWrite 保存，不能丢弃。
       await runWrite(() => postSandIamAction(path, { id }), rotates ? '已轮换' : '已撤销',
-        describeSandIamError, rotates, rotates ? () => true : current)
+        describeSandIamError, rotates, rotates ? () => true : current,
+        typeof row.workload_client_id === 'number' ? { workload_client_id: row.workload_client_id } :
+          typeof row.application_id === 'number' ? { application_id: row.application_id } : {})
     } catch {
       // 用户取消确认。
     } finally {
@@ -996,10 +1057,45 @@
       () => selectedIdentity === identityId.value && version === referenceRequestId[key])
   }
 
-  onMounted(() => {
-    void load()
-    void loadReferenceOptions()
+  const activeContext = computed<TaskContext>(() => {
+    const context: TaskContext = {}
+    for (const key of taskContextKeys) {
+      const id = parsePositiveInt(selectedReferenceValue(key))
+      if (id !== null) context[key] = id
+    }
+    return context
   })
+  async function restoreTaskContext(): Promise<void> {
+    const attempt = ++contextVersion
+    const originalFilters = JSON.stringify(buildParams())
+    restoringContext = true
+    contextError.value = ''
+    try {
+      const verified = await verifyTaskContext(parseTaskContext(route.query), readSandIamResource)
+      if (disposed || attempt !== contextVersion || originalFilters !== JSON.stringify(buildParams())) return
+      organizationId.value = verified.context.organization_id === undefined ? '' : String(verified.context.organization_id)
+      applicationId.value = verified.context.application_id === undefined ? '' : String(verified.context.application_id)
+      environmentId.value = verified.context.environment_id === undefined ? '' : String(verified.context.environment_id)
+      workloadClientId.value = verified.context.workload_client_id === undefined ? '' : String(verified.context.workload_client_id)
+      for (const key of taskContextKeys) {
+        const row = verified.rows[key]
+        if (row && typeof row.id === 'number') referenceOptions[key] = [{ value: String(row.id), label: sandIamReferenceLabel(row), row }]
+      }
+    } catch {
+      if (disposed || attempt !== contextVersion || originalFilters !== JSON.stringify(buildParams())) return
+      organizationId.value = ''; applicationId.value = ''; environmentId.value = ''; workloadClientId.value = ''
+      contextError.value = '无法确认链接中的应用归属，请重新选择有权管理的应用和环境；未使用链接中的默认值。'
+    } finally {
+      await nextTick()
+      if (!disposed && attempt === contextVersion) {
+        restoringContext = false
+        void load()
+        void loadReferenceOptions()
+      }
+    }
+  }
+  onMounted(() => { void restoreTaskContext() })
+  watch(() => route.fullPath, () => { void restoreTaskContext() })
   watch(() => JSON.stringify(buildParams()), () => { historyPolicyId.value = null }, { flush: 'sync' })
   watch(rows, () => {
     if (historyPolicyId.value !== null && !rows.value.some(row => rowId(row) === historyPolicyId.value)) {
@@ -1020,8 +1116,8 @@
   }, { flush: 'sync' })
 
   watch(organizationId, () => {
+    if (restoringContext) return
     if (hasApplicationGrantContext.value) return
-    if (!shows('application_id')) return
     applicationId.value = ''
     environmentId.value = ''
     workloadClientId.value = ''
@@ -1029,17 +1125,18 @@
   })
 
   watch(applicationId, () => {
+    if (restoringContext) return
+    identityId.value = ''
     if (hasApplicationGrantContext.value) {
       syncApplicationGrantOrganization(referenceOptions.application_id ?? [])
     }
-    if (!shows('environment_id')) return
     environmentId.value = ''
     workloadClientId.value = ''
     void loadReferenceOptions()
   })
 
   watch(environmentId, () => {
-    if (!shows('workload_client_id')) return
+    if (restoringContext) return
     workloadClientId.value = ''
     void loadReferenceOptions()
   })
@@ -1047,6 +1144,8 @@
 
 <template>
   <div class="sand-iam-page">
+    <TaskContinuation :context="activeContext" />
+    <ElAlert v-if="contextError" class="mb-4" type="warning" :closable="false" :title="contextError" />
     <ElCard class="sand-iam-page-card" shadow="never">
       <div class="mb-4 flex items-start justify-between gap-4">
         <div>
@@ -1264,7 +1363,7 @@
       />
 
       <ElAlert
-        v-if="requestError"
+        v-if="requestError && !editorOpen"
         class="mb-4"
         type="error"
         :closable="false"
@@ -1298,7 +1397,7 @@
         >
           <template #default="scope">
             <ElSpace v-if="column.copyable === true" :size="8">
-              <span>{{ displayValue(column.key, scope.row[column.key], scope.row) }}</span>
+              <span>{{ column.format ? column.format(scope.row) : displayValue(column.key, scope.row[column.key], scope.row) }}</span>
               <ElButton
                 v-if="typeof scope.row[column.key] === 'string' && scope.row[column.key] !== ''"
                 link
@@ -1309,7 +1408,7 @@
                 复制
               </ElButton>
             </ElSpace>
-            <span v-else>{{ displayValue(column.key, scope.row[column.key], scope.row) }}</span>
+            <span v-else>{{ column.format ? column.format(scope.row) : displayValue(column.key, scope.row[column.key], scope.row) }}</span>
           </template>
         </ElTableColumn>
         <ElTableColumn
@@ -1508,7 +1607,7 @@
 
       <ElEmpty
         v-if="!loading && !requestError && !identityMissing && !hasRows"
-        description="当前权限范围内暂无数据（不是全量成功）"
+        description="当前筛选条件下没有记录。需要配置时可点击新建；找不到已有记录时请核对应用和环境。"
       />
       <slot name="extra" />
 
@@ -1534,6 +1633,8 @@
       :fields="formFields"
       :creating="creating"
       :row="editingRow"
+      :initial-values="initialValues"
+      :submit-error="editorSubmitError"
       :write-mode="writeMode"
       @submit="onEditorSubmit"
     />
@@ -1552,6 +1653,8 @@
         title="明文仅在当前窗口展示一次"
         description="请复制并交给应用的安全配置渠道；不要写入文档、聊天记录或截图。关闭窗口后无法从页面恢复。"
       />
+      <div class="mt-4 text-sm"><p v-for="line in issuedSummary" :key="line">{{ line }}</p></div>
+      <p class="text-sm">交给此应用的接入开发者，在安全配置中使用；调用地址和受众由服务提供方提供。交付后验证一次成功调用、错误受众拒绝和无权动作拒绝，再核对访问审计。</p>
       <ElInput class="mt-4" :model-value="issuedSecret ?? ''" readonly type="textarea" :rows="4" />
       <template #footer>
         <ElButton type="primary" @click="copyIssuedSecret">复制凭证</ElButton>
