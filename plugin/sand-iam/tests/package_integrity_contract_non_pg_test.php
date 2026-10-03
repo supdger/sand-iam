@@ -233,12 +233,12 @@ $checks = [
                     return $status !== 0 && str_contains($output, 'release metadata versions and host support are consistent');
                 });
             };
-            return $expectFailure(str_replace("support = \">=0.1.0\"\n", '', $rootSource))
-                && $expectFailure(str_replace('support = ">=0.1.0"', 'support = undefined', $rootSource))
-                && $expectFailure(str_replace('support = ">=0.1.0"', 'support = 0.1.0', $rootSource))
-                && $expectFailure(str_replace('support = ">=0.1.0"', 'support = 0.0.x', $rootSource))
+            return $expectFailure(preg_replace('/^support\s*=.*\n/m', '', $rootSource))
+                && $expectFailure(preg_replace('/^support\s*=.*$/m', 'support = "undefined"', $rootSource))
+                && $expectFailure(preg_replace('/^support\s*=.*$/m', 'support = "0.1.0"', $rootSource))
+                && $expectFailure(preg_replace('/^support\s*=.*$/m', 'support = "0.0.x"', $rootSource))
                 && $expectFailure(str_replace("website = https://saithink.top\n", '', $rootSource))
-                && $withTemporarilyReplacedFixtureFile($packageInfo, str_replace('support = ">=0.1.0"', 'support = 0.2.x', $packageSource), static function () use ($runTool): bool {
+                && $withTemporarilyReplacedFixtureFile($packageInfo, preg_replace('/^support\s*=.*$/m', 'support = "0.2.x"', $packageSource), static function () use ($runTool): bool {
                     [$status, $output] = $runTool([]);
                     return $status !== 0 && str_contains($output, 'release metadata versions and host support are consistent');
                 })
@@ -246,6 +246,74 @@ $checks = [
                     [$status, $output] = $runTool([]);
                     return $status !== 0 && str_contains($output, 'release metadata versions and host support are consistent');
                 });
+        });
+    },
+    'producer policy accepts open minimum and rejects matching closed declarations' => static function () use ($root, $runToolAt): bool {
+        return sandIamWithIsolatedFixture($root, static function (string $fixture) use ($runToolAt): bool {
+            foreach (['>=0.1.0' => true, '0.1.x' => false, '0.x' => false,
+                '>=0.1.0 <=0.2.0' => false, '>=00.1.0' => false] as $support => $accepted) {
+                foreach (['info.ini', 'plugin/sand-iam/info.ini'] as $relative) {
+                    $path = $fixture . '/' . $relative;
+                    $source = (string) file_get_contents($path);
+                    $replacement = preg_replace('/^support\\s*=.*$/m', 'support = "' . $support . '"', $source);
+                    if (!is_string($replacement) || file_put_contents($path, $replacement) === false) return false;
+                }
+                [$status, $output] = $runToolAt($fixture, []);
+                $label = 'host support follows the default open minimum producer policy';
+                if ($accepted && !str_contains($output, '[PASS] ' . $label)) return false;
+                if (!$accepted && ($status === 0 || !str_contains($output, '[FAIL] ' . $label)
+                    || !str_contains($output, 'host compatibility rule conflict'))) return false;
+            }
+            return true;
+        });
+    },
+    'independent release builder rejects committed support conflicts before artifact creation' => static function () use ($root): bool {
+        return sandIamWithIsolatedFixture($root, static function (string $fixture): bool {
+            $run = static function (array $arguments): array {
+                $command = implode(' ', array_map('escapeshellarg', $arguments));
+                $output = [];
+                exec($command . ' 2>&1', $output, $status);
+                return [$status, implode(PHP_EOL, $output)];
+            };
+            foreach ([['init', '-q'], ['config', 'user.name', 'Fixture'],
+                ['config', 'user.email', 'fixture@example.invalid']] as $arguments) {
+                [$status] = $run(array_merge(['git', '-C', $fixture], $arguments));
+                if ($status !== 0) return false;
+            }
+            // This committed fixture deliberately has an incomplete payload.
+            // Open support must reach that next gate; conflicts stop earlier.
+            unlink($fixture . '/README.md');
+            $originalInfo = [
+                'info.ini' => (string) file_get_contents($fixture . '/info.ini'),
+                'plugin/sand-iam/info.ini' => (string) file_get_contents($fixture . '/plugin/sand-iam/info.ini'),
+            ];
+            foreach ([
+                ['>=0.1.0', '>=0.1.0', true],
+                ['0.1.x', '0.1.x', false],
+                ['>=0.1.0 <=0.2.0', '>=0.1.0 <=0.2.0', false],
+                [null, null, false],
+                ['undefined', 'undefined', false],
+                ['>=0.1.0', '>=0.2.0', false],
+            ] as [$support, $peer, $accepted]) {
+                foreach (['info.ini' => $support, 'plugin/sand-iam/info.ini' => $peer] as $relative => $value) {
+                    $path = $fixture . '/' . $relative;
+                    $source = $originalInfo[$relative];
+                    $replacement = preg_replace('/^support\s*=.*\n/m',
+                        $value === null ? '' : 'support = "' . $value . '"' . "\n", $source);
+                    if (!is_string($replacement) || file_put_contents($path, $replacement) === false) return false;
+                }
+                [$status] = $run(['git', '-C', $fixture, 'add', '.']);
+                if ($status !== 0) return false;
+                [$status] = $run(['git', '-C', $fixture, 'commit', '-qm', 'support fixture']);
+                if ($status !== 0) return false;
+                $outputDirectory = dirname($fixture) . '/must-not-create-artifacts';
+                [$status, $output] = $run([PHP_BINARY, $fixture . '/tools/build-independent-release.php', $outputDirectory]);
+                if ($status === 0 || file_exists($outputDirectory)) return false;
+                if ($accepted && (!str_contains($output, '[PASS] committed host support')
+                    || !str_contains($output, 'Required committed payload missing: README.md'))) return false;
+                if (!$accepted && !str_contains($output, 'host compatibility rule conflict')) return false;
+            }
+            return true;
         });
     },
     'tool collects every foreign key from one ALTER TABLE statement' => static function () use ($root, $runToolAt, $withTemporarilyReplacedFixtureFile): bool {

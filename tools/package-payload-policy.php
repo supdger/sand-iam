@@ -11,6 +11,21 @@ declare(strict_types=1);
  * must never influence a release descriptor after a candidate is frozen.
  */
 
+/** Default current-source producer policy; historical catalog bounds need separate evidence. */
+function sandIamAssertOpenHostSupport(array $rootInfo, array $packageInfo): void
+{
+    $support = $rootInfo['support'] ?? null;
+    if (!is_string($support)
+        || ($packageInfo['support'] ?? null) !== $support
+        || preg_match('/^>=(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/D', $support) !== 1) {
+        throw new RuntimeException(
+            'host compatibility rule conflict: both support declarations must match >=host_min '
+            . 'with an open upper bound; a historical upper bound requires documented catalog '
+            . 'boundary evidence, which this current-source checker does not automatically verify'
+        );
+    }
+}
+
 /** @return list<string> */
 function sandIamPayloadRoots(): array
 {
