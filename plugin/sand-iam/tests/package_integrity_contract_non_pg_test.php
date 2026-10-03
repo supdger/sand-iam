@@ -233,12 +233,12 @@ $checks = [
                     return $status !== 0 && str_contains($output, 'release metadata versions and host support are consistent');
                 });
             };
-            return $expectFailure(str_replace("support = 0.1.x\n", '', $rootSource))
-                && $expectFailure(str_replace('support = 0.1.x', 'support = undefined', $rootSource))
-                && $expectFailure(str_replace('support = 0.1.x', 'support = 0.1.0', $rootSource))
-                && $expectFailure(str_replace('support = 0.1.x', 'support = 0.0.x', $rootSource))
+            return $expectFailure(str_replace("support = \">=0.1.0\"\n", '', $rootSource))
+                && $expectFailure(str_replace('support = ">=0.1.0"', 'support = undefined', $rootSource))
+                && $expectFailure(str_replace('support = ">=0.1.0"', 'support = 0.1.0', $rootSource))
+                && $expectFailure(str_replace('support = ">=0.1.0"', 'support = 0.0.x', $rootSource))
                 && $expectFailure(str_replace("website = https://saithink.top\n", '', $rootSource))
-                && $withTemporarilyReplacedFixtureFile($packageInfo, str_replace('support = 0.1.x', 'support = 0.2.x', $packageSource), static function () use ($runTool): bool {
+                && $withTemporarilyReplacedFixtureFile($packageInfo, str_replace('support = ">=0.1.0"', 'support = 0.2.x', $packageSource), static function () use ($runTool): bool {
                     [$status, $output] = $runTool([]);
                     return $status !== 0 && str_contains($output, 'release metadata versions and host support are consistent');
                 })
