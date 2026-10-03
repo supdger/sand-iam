@@ -962,6 +962,13 @@ $assert('release metadata versions and host support are consistent', static func
     return $version !== null && $version === $rootInfo['version'] && $version === $packageInfo['version'];
 });
 
+$assert('host support follows the default open minimum producer policy', static function () use ($root, $package): bool {
+    $rootInfo = parse_ini_file($root . '/info.ini');
+    $packageInfo = parse_ini_file($package . '/info.ini');
+    sandIamAssertOpenHostSupport(is_array($rootInfo) ? $rootInfo : [], is_array($packageInfo) ? $packageInfo : []);
+    return true;
+});
+
 /** @return non-empty-string */
 $externalRegularFile = static function (?string $path, string $label) use ($root): string {
     if (!is_string($path) || $path === '') {
