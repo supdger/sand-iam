@@ -68,7 +68,7 @@ console.log("SandIAM portal source contracts passed");
 // Execute the production portal with a minimal DOM and controlled fetch responses.
 const bundled = await build({
   stdin: {
-    contents: `${app}\nexport { state, submitRegister, submitLogin, loadExperience, render, submitForgot, submitReset, startTotp, regenerateRecoveryCodes, registerPasskey, changePassword, submitPasskeyLogin, submitMfaLogin, submitPasskeyMfaLogin, startExternalLogin, submitCasConfirm, submitCasReject, submitOAuthDecision, submitAcceptInvitation, revokeSession, submitLogout };\nexport { loadPortalCaptchaConfiguration } from "./runtime";`,
+    contents: `${app}\nexport { state, submitRegister, submitLogin, loadExperience, render, submitForgot, submitReset, startTotp, regenerateRecoveryCodes, registerPasskey, changePassword, submitPasskeyLogin, submitMfaLogin, submitPasskeyMfaLogin, startExternalLogin, submitCasConfirm, submitCasReject, submitOAuthDecision, submitAcceptInvitation, revokeSession, submitLogout };\nexport { loadPortalCaptchaConfiguration, describePortalError, SandIamPortalTransportError } from "./runtime";`,
     resolveDir: resolve(root, "src"),
     loader: "ts",
   },
@@ -170,6 +170,11 @@ const context = vm.createContext({
 });
 vm.runInContext(bundled.outputFiles[0].text, context);
 const portal = context.module.exports;
+const wrongPassword = new portal.SandIamPortalTransportError("SAND_IAM_AUTHENTICATION_FAILED", 401);
+assert.equal(portal.describePortalError(wrongPassword, "password-login").title, "登录未成功");
+assert.equal(portal.describePortalError(wrongPassword).title, "登录已失效", "other operations retain session error semantics");
+assert.equal(portal.describePortalError(new portal.SandIamPortalTransportError("SAND_IAM_AUTH_TOKEN_EXPIRED", 401), "password-login").title, "登录已失效");
+assert.equal(portal.describePortalError(new portal.SandIamPortalTransportError("SAND_IAM_AUTH_CURRENT_PASSWORD_INVALID", 401), "password-login").title, "登录已失效");
 Object.assign(portal.state, {
   organizationCode: "org-a", applicationCode: "app-a",
   experience: {
@@ -336,6 +341,8 @@ await settle();
 assert.equal(calls.filter((call) => call.url === "/api/sand-iam/v1/auth/login").length, requests.length);
 assert.ok(calls.length >= requestCount);
 assert.equal(nodes.get("login-btn").disabled, true, "failed login requires a fresh challenge");
+assert.equal(portal.state.errorTitle, "登录未成功", "actual password-login failure must not say an existing login expired");
+assert.match(portal.state.errorDetail, /核对所选应用、账号和密码/);
 captchaResponse = { required: true, available: false };
 portal.render();
 await settle();

@@ -381,3 +381,17 @@ actionEditor.businessActionErrors.action = ''
 assert.equal(actionEditor.buildPayload().action, 'inspect', 'action must remain its exact business code, never its numeric id')
 actionEditor.stop()
 console.log('ResourceEditor business action validity and exact payload PASS')
+
+const policyDraftFields = api('policyPublication').policyEditorFields.filter(field => ['priority', 'state'].includes(field.key))
+const policyDraft = harness(policyDraftFields, false, { id: 5, priority: 10, state: 'published' })
+policyDraft.resetForm()
+policyDraft.form.state = 'draft'
+policyDraft.form.priority = 20
+assert.equal(policyDraft.buildPayload().priority, 20)
+assert.equal('state' in policyDraft.buildPayload(), false, 'saving a policy edit must not change the stored state by a hidden form default')
+policyDraft.stop()
+const freshPolicyDraft = harness(policyDraftFields, true, null)
+freshPolicyDraft.resetForm()
+assert.equal('state' in freshPolicyDraft.buildPayload(), false, 'new policy relies on existing server draft default')
+freshPolicyDraft.stop()
+console.log('Policy editor omitted state PASS')

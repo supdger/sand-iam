@@ -41,3 +41,20 @@ const api = resolveGuidanceGoal('api', undefined)!
 assert.deepEqual(api.steps.slice(0, 3).map(step => step.key), ['resource', 'business-action', 'api-resource'])
 assert.equal(goalStepParams(access.steps.find(step => step.key === 'business-action')!, { application_id: 20 })?.application_id, 20)
 console.log('Required business action and resource prerequisites PASS')
+
+for (const method of ['invite', 'register']) {
+  const login = resolveGuidanceGoal('login', method)!
+  const appearance = login.steps.find(step => step.key === 'application-experience')!
+  assert.ok(appearance && !appearance.optional)
+  assert.equal(appearance.permission, 'sand_iam:application_experience:index')
+  assert.deepEqual(goalStepParams(appearance, { application_id: 20 }), { page: 1, limit: 1, application_id: 20, status: 1 })
+  assert.equal(nextGoalStep(login, 'auth-settings')?.key, 'application-experience')
+  assert.equal(nextGoalStep(login, 'application-experience')?.key, method === 'register' ? 'self-register' : 'identity-invitation')
+}
+const customLogin = resolveGuidanceGoal('login', 'custom')!
+assert.ok(customLogin.steps.every(step => !['application-experience', 'self-register', 'identity-invitation'].includes(step.key)))
+assert.equal(nextGoalStep(customLogin, 'auth-settings')?.key, 'developer-docs')
+assert.equal(nextGoalStep(customLogin, 'developer-docs')?.key, 'employee-login')
+assert.match(customLogin.steps.find(step => step.key === 'employee-login')!.input, /现有登录入口/)
+assert.equal(guidanceQuery({ application_id: 20 }, 'login', 'developer-docs', 'custom').method, 'custom')
+console.log('Login prerequisites PASS: enabled built-in experience, reuse, permission, and custom-login branch')

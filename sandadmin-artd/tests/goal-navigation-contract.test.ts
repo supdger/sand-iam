@@ -10,7 +10,7 @@ const publicPaths = new Set([...menus.matchAll(/\('SandIAM[^']*','[^']*','([^']*
 assert.ok(publicPaths.has('/sand-iam/overview'))
 assert.ok(!publicPaths.has('/sand-iam/index'))
 const context = { organization_id: 19, application_id: 20, environment_id: 21 }
-const variants = [...guidanceGoals, resolveGuidanceGoal('login', 'register')!, resolveGuidanceGoal('directory', 'scim')!]
+const variants = [...guidanceGoals, resolveGuidanceGoal('login', 'register')!, resolveGuidanceGoal('login', 'custom')!, resolveGuidanceGoal('directory', 'scim')!]
 for (const goal of variants) {
   const method = goal.id === 'directory' ? 'scim' : goal.id === 'login' ? 'register' : undefined
   for (const step of goal.steps) {

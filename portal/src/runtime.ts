@@ -946,13 +946,21 @@ export async function decideOAuthInteraction(
   return { requestId: result.requestId, data: completed };
 }
 
-export function describePortalError(error: unknown): {
+export function describePortalError(error: unknown, operation?: "password-login"): {
   readonly title: string;
   readonly detail: string;
   readonly http: number | null;
 } {
   const http = error instanceof SandIamPortalTransportError ? error.http : null;
   const detail = error instanceof Error ? error.message : "请求未完成";
+  if (operation === "password-login" && http === 401 &&
+    /^SAND_IAM_AUTHENTICATION_FAILED(?::|$)/.test(detail)) {
+    return {
+      title: "登录未成功",
+      detail: "请核对所选应用、账号和密码后重试；若仍无法登录，请联系应用管理员。",
+      http,
+    };
+  }
   if (http === 401) {
     return {
       title: "登录已失效",

@@ -76,6 +76,41 @@ async function run() {
   assert.equal(policy.notices.length, 0)
   policy.stop()
 
+  const publishing = harness({
+    endpoint: 'policy', writeMode: 'policy', permissionPrefix: 'sand_iam:policy',
+    saveSuccessMessage: '保存编辑，不会发布', publishSuccessMessage: '发布成功，核对版本历史'
+  })
+  publishing.page.openCreate()
+  let publishingAction = publishing.page.onEditorSubmit({ action: 'inspect', priority: 1 })
+  assert.equal(publishing.writes[0].name, 'saveSandIamResource')
+  assert.equal(publishing.writes.length, 1, 'save must not call publish automatically')
+  publishing.writes[0].resolve({ id: 5 })
+  await new Promise(resolve => setImmediate(resolve))
+  publishing.requests.at(-1).resolve([{ id: 5, status: 1, state: 'draft', published_version_id: null }])
+  await publishingAction
+  assert.equal(publishing.notices.at(-1), '保存编辑，不会发布')
+  assert.equal(publishing.page.rows.value[0].published_version_id, null)
+  publishingAction = publishing.page.confirmAction('policy/publish', { id: 5 }, '发布策略', publishing.page.rows.value[0], '')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(publishing.writes.at(-1).args[0], 'policy/publish')
+  publishing.writes.at(-1).resolve({ published_version_id: 45, version_no: 1 })
+  await new Promise(resolve => setImmediate(resolve))
+  publishing.requests.at(-1).resolve([{ id: 5, status: 1, state: 'published', published_version_id: 45 }])
+  await publishingAction
+  assert.equal(publishing.notices.at(-1), '发布成功，核对版本历史')
+  publishing.page.openEdit(publishing.page.rows.value[0])
+  publishingAction = publishing.page.onEditorSubmit({ priority: 2 })
+  assert.equal(publishing.writes.at(-1).name, 'updateSandIamResource')
+  assert.equal('state' in publishing.writes.at(-1).args[1], false)
+  publishing.writes.at(-1).resolve({})
+  await new Promise(resolve => setImmediate(resolve))
+  publishing.requests.at(-1).resolve([{ id: 5, priority: 2, status: 1, state: 'published', published_version_id: 45 }])
+  await publishingAction
+  assert.equal(publishing.page.rows.value[0].published_version_id, 45)
+  assert.equal(publishing.notices.at(-1), '保存编辑，不会发布')
+  assert.equal(publishing.writes.length, 3, 'edit/save must not replace the published snapshot via another publish call')
+  publishing.stop()
+
   const crud = harness({ endpoint: 'environment', writeMode: 'crud', permissionPrefix: 'sand_iam:environment', filters: ['keywords'] }, true)
   crud.page.openCreate()
   let action = crud.page.onEditorSubmit({ name: 'Env', code: 'test', application_id: 1 })

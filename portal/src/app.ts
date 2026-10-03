@@ -458,8 +458,8 @@ function inputValue(id: string): string {
   return element instanceof HTMLInputElement ? element.value : "";
 }
 
-function setError(error: unknown): void {
-  const described = describePortalError(error);
+function setError(error: unknown, operation?: "password-login"): void {
+  const described = describePortalError(error, operation);
   state.errorTitle = described.title;
   state.errorDetail = described.detail;
 }
@@ -737,6 +737,7 @@ async function submitLogin(): Promise<void> {
   const identifier = inputValue("login-identifier");
   const organization = state.organizationCode;
   const application = state.applicationCode;
+  let loginRequestCompleted = false;
   try {
     const result = await portalLogin(
       state.organizationCode,
@@ -745,6 +746,7 @@ async function submitLogin(): Promise<void> {
       inputValue("login-password"),
       captcha,
     );
+    loginRequestCompleted = true;
     if (submission !== authSubmission || organization !== state.organizationCode || application !== state.applicationCode) return;
     rememberRequest(result.requestId);
     if (result.data.verificationRequired) {
@@ -770,7 +772,7 @@ async function submitLogin(): Promise<void> {
     if (error instanceof Error && error.message.includes("SAND_IAM_AUTH_VERIFICATION_REQUIRED")) {
       openVerification(identifier, organization, application);
     } else {
-      setError(error);
+      setError(error, loginRequestCompleted ? undefined : "password-login");
     }
     render();
   } finally {

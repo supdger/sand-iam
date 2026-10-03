@@ -5,10 +5,11 @@ declare(strict_types=1);
 /**
  * Build the self-contained SandPackage lifecycle payloads.
  *
- * SandPackage imports one statement whenever an input line ends in a
- * semicolon. It does not understand psql's \ir command and cannot keep a
- * multi-line DO block together. The generated files therefore contain every
- * migration inline. The 0.7.6/0.8.0 profiles retains the published fresh admission
+ * Every profile is self-contained; psql's \ir command is never required.
+ * Historical profiles retain their frozen statement folding for older
+ * importers. The 0.8.2 update uses the public PostgreSQL executor's multiline
+ * dollar-quote support and preserves embedded migration bytes.
+ * The 0.7.6/0.8.0 profiles retain the published fresh admission
  * and raw base; the historical embedded073 profile retains its old folding.
  * The 0.8.0/0.8.1 profiles atomically admits published073 then applies revision043.
  * Default/--check verifies bytes without writes; --output builds into a new
@@ -16,11 +17,13 @@ declare(strict_types=1);
  * Only explicit --write can replace source lifecycle files.
  */
 
+require_once __DIR__ . '/lifecycle-sql.php';
+
 $options = getopt('', ['profile:', 'output:', 'check', 'write']);
 $root = dirname(__DIR__);
 $version = parse_ini_file($root . '/info.ini')['version'] ?? '';
-$profile = $options['profile'] ?? (in_array($version, ['0.7.6', '0.8.0', '0.8.1'], true) ? $version : 'legacy-0.7.3');
-if (!in_array($profile, ['0.7.6', '0.8.0', '0.8.1', 'legacy-0.7.3'], true)) throw new RuntimeException('Unsupported lifecycle profile');
+$profile = $options['profile'] ?? (in_array($version, ['0.7.6', '0.8.0', '0.8.1', '0.8.2'], true) ? $version : 'legacy-0.7.3');
+if (!in_array($profile, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', 'legacy-0.7.3'], true)) throw new RuntimeException('Unsupported lifecycle profile');
 if (isset($options['output'], $options['write']) || isset($options['check'], $options['write'])) {
     throw new RuntimeException('Choose check, a new output directory, or explicit source write');
 }
@@ -87,7 +90,7 @@ $migrations = [
     '043_scope_audit_event_key.pgsql',
 ];
 
-if (!in_array($profile, ['0.8.0', '0.8.1'], true)) $migrations = array_slice($migrations, 0, -1);
+if (!in_array($profile, ['0.8.0', '0.8.1', '0.8.2'], true)) $migrations = array_slice($migrations, 0, -1);
 if ($profile === 'legacy-0.7.3') $migrations = array_slice($migrations, 0, -1);
 
 /** @return non-empty-string */
@@ -178,29 +181,6 @@ function migrationPayload(string $directory, array $names): string
     }
 
     return $payload;
-}
-
-/**
- * Reuse a published migration body inside a lifecycle-owned transaction.
- *
- * The migration source remains byte-for-byte immutable. Only its outer
- * transaction delimiters are omitted from the generated lifecycle so a
- * preceding admission preflight and the migration body share one executor
- * visible transaction.
- */
-function withoutOuterTransaction(string $sql, string $name): string
-{
-    $beginOffset = strpos($sql, "\nBEGIN;");
-    $commitOffset = strrpos($sql, "\nCOMMIT;");
-    if ($beginOffset === false || $commitOffset === false || $beginOffset >= $commitOffset
-        || trim(substr($sql, $commitOffset + strlen("\nCOMMIT;"))) !== '') {
-        throw new RuntimeException("Migration {$name} must own one terminal explicit transaction");
-    }
-
-    return rtrim(
-        substr($sql, 0, $beginOffset + 1)
-        . substr($sql, $beginOffset + strlen("\nBEGIN;"), $commitOffset - ($beginOffset + strlen("\nBEGIN;")))
-    ) . "\n";
 }
 
 /** @return list<string> */
@@ -350,11 +330,11 @@ SQL;
         . $inventoryHeader . "\n" . rtrim($admission) . "\n" . implode("\n", $inventoryLines)
         . $base;
     $install .= collapseDoBlocks(migrationPayload($sourceDirectory, array_slice($migrations, 4)));
-    $preflightFile = in_array($profile, ['0.8.0', '0.8.1'], true)
+    $preflightFile = in_array($profile, ['0.8.0', '0.8.1', '0.8.2'], true)
         ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
         : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
     $update = readRequired($root . $preflightFile);
-    if (in_array($profile, ['0.8.0', '0.8.1'], true)) {
+    if (in_array($profile, ['0.8.0', '0.8.1', '0.8.2'], true)) {
         // Admission and migration share one transaction: failure restores both
         // the audit constraint and ledger. The standalone admission is read-only.
         $admission = str_replace('BEGIN TRANSACTION READ ONLY;', 'BEGIN;', $update);
@@ -369,6 +349,10 @@ SQL;
                 '043_scope_audit_event_key.pgsql'
             ))
             . "COMMIT;\n";
+    }
+    if ($profile === '0.8.2') {
+        require_once __DIR__ . '/build-upgrade-082.php';
+        $update = sandIamBuild082Update($root);
     }
     $uninstall = "-- SandIAM uninstall lifecycle for the release package.\n"
         . readRequired($root . '/lifecycle/remove.pgsql');

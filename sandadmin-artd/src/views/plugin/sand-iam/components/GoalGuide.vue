@@ -36,7 +36,7 @@
   let disposed = false
   const method = computed(() => typeof route.query.method === 'string' ? route.query.method : undefined)
   const goal = computed(() => resolveGuidanceGoal(route.query.goal, method.value))
-  const needsMethod = computed(() => goal.value?.id === 'login' ? !['invite', 'register'].includes(method.value ?? '') : goal.value?.id === 'directory' ? !['connector', 'scim'].includes(method.value ?? '') : false)
+  const needsMethod = computed(() => goal.value?.id === 'login' ? !['invite', 'register', 'custom'].includes(method.value ?? '') : goal.value?.id === 'directory' ? !['connector', 'scim'].includes(method.value ?? '') : false)
   const availableGoals = computed(() => guidanceGoals.filter(item => canUseGoal(item, hasAuth)))
   const stepIndex = computed(() => Math.max(0, goal.value?.steps.findIndex(item => item.key === (route.query.step ?? suggestedStep.value)) ?? 0))
   const currentStep = computed(() => goal.value?.steps[stepIndex.value])
@@ -157,7 +157,11 @@
     try {
       const result = list(await listSandIamResource(item.endpoint, params))
       if (disposed || attempt !== statusGeneration) return
-      status.value = result.total > 0 ? `当前应用已有 ${result.total} 条记录。先核对并复用；记录存在不代表已验证可用。` : '当前应用尚无这类记录，请按本步说明配置。'
+      status.value = item.endpoint === 'application-experience'
+        ? result.total > 0
+          ? '当前应用已有启用的登录外观。请直接复用并核对注册方式与登录方式，再从应用门户验证。'
+          : '当前应用还没有启用的登录外观。请打开本步骤核对已有记录：有停用记录先恢复，没有时再新建。'
+        : result.total > 0 ? `当前应用已有 ${result.total} 条记录。先核对并复用；记录存在不代表已验证可用。` : '当前应用尚无这类记录，请按本步说明配置。'
     } catch {
       if (!disposed && attempt === statusGeneration) { statusError.value = true; status.value = '配置状态读取失败。请重试，不要因这次失败重新创建对象。' }
     }
@@ -251,10 +255,12 @@
       <ElAlert v-if="blockedCount > 0" type="warning" :closable="false" :title="`此目标有 ${blockedCount} 个必做步骤超出当前账号权限`" description="可先办理你有权限的部分；其余步骤需该应用的管理员或接入负责人完成。切换目标不会增加权限。" />
       <p v-if="!applicationLabel">先选择或登记要配置的应用。下面可以预览步骤，选择应用后即可开始。</p>
       <section v-if="needsMethod" class="goal-guide__step">
-        <h4>{{ goal.id === 'login' ? '怎样开通用户账号？' : '目录由哪一端发起同步？' }}</h4>
+        <h4>{{ goal.id === 'login' ? '用户从哪里登录？' : '目录由哪一端发起同步？' }}</h4>
         <template v-if="goal.id === 'login'">
-          <p>邀请适合指定人员；公开注册适合允许用户自行加入的应用。已有用户无需重新开通，可在全部步骤中从首次登录核对。</p>
-          <ElButton @click="selectMethod('invite')">管理员发送邀请</ElButton><ElButton @click="selectMethod('register')">用户自行注册</ElButton>
+          <p>没有登录页面时，可使用 SandIAM 自带的应用门户：邀请适合指定人员，公开注册允许用户自行开户。已有应用用户无需再次开户，核对门户配置后直接登录。</p>
+          <ElButton @click="selectMethod('invite')">使用内置门户，邀请开户</ElButton><ElButton @click="selectMethod('register')">使用内置门户，自行注册</ElButton>
+          <p>已有自有登录页面时，复用现有页面并接入 SandIAM 认证，无需配置内置门户外观。</p>
+          <ElButton @click="selectMethod('custom')">使用已有的自有登录页面</ElButton>
         </template>
         <template v-else>
           <p>向目录负责人确认已有对接方式；选择一种即可，另一种不必配置。</p>

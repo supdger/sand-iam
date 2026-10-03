@@ -37,9 +37,16 @@ const businessAction = step('api-governance', 'business-action', {
   result: '当前应用已有所需的启用动作，配置策略或接口时可以按名称选择。声明动作本身不会授予任何人权限。',
   emptyHint: '先声明并启用所需业务动作，再配置策略或接口。'
 })
+const portalExperience = step('auth-session', 'application-experience', {
+  label: '内置门户登录外观',
+  owner: '应用管理员',
+  input: '先核对并复用当前应用已有的登录外观；没有时再新建，每个应用最多一条。填写应用显示名称，启用密码登录并保持记录启用；邀请开户选「邀请注册」，用户自行开户选「开放注册」。认证策略及部署开关仍须允许对应方式。',
+  result: '内置应用门户能显示当前应用的品牌和登录页；开放注册时显示注册入口，邀请开户使用收到的邀请链接。随后用真实应用账号验证，保存记录不表示注册或登录已成功。',
+  recovery: '已有停用记录时由有权管理员核对后恢复，不重复新建。门户提示登录外观未配置时，核对记录启用状态、客户主体代码和应用代码。'
+})
 export const guidanceGoals: readonly GuidanceGoal[] = [
   { id: 'login', title: '让用户登录应用', situation: '应用还没有可用的用户登录入口。', outcome: '用户能开通账号并登录，错误密码被拒绝。', skip: '已有登录需先衔接 SandIAM 的应用身份与可信令牌，再配置权限；企业账号登录请选择“使用已有企业账号登录”。', steps: [
-    step('people-access', 'auth-settings'), step('people-access', 'identity-invitation'),
+    step('people-access', 'auth-settings'), portalExperience, step('people-access', 'identity-invitation'),
     step('people-access', 'employee-login'), step('people-access', 'identity'), { ...developer, input: '管理员提供组织与应用代码、已开放的登录方式。开发者将 SandIAM 登录及 MFA 接入应用，使用本地登录或 OAuth 签发的会话；不能直接使用其他系统 token。', result: '用户能登录本应用，错误密码被拒绝，退出后旧会话不可再访问账户。此目标不要求配置资源、策略或数据范围。' },
     step('people-access', 'audit') ] },
   { id: 'access', title: '控制权限和数据范围', situation: '已有用户，需要决定能做什么、能看哪些数据。', outcome: '同一业务操作有权允许、无权拒绝，范围外数据不能读取。', skip: '复用现有身份与登录；按用户直接授权时可跳过角色及角色分配。', steps: [
@@ -91,6 +98,21 @@ export function nextGoalStep(goal: GuidanceGoal, key: string): GoalStep | undefi
 export function resolveGuidanceGoal(value: unknown, method: unknown): GuidanceGoal | undefined {
   const goal = guidanceGoal(value)
   if (!goal) return undefined
+  if (goal.id === 'login' && method === 'custom') return {
+    ...goal,
+    skip: '使用已有的自有登录页面，无需配置 SandIAM 内置门户外观。页面仍须接入 SandIAM 的认证和会话，其他系统已有 token 不能直接当作 SandIAM 用户令牌。',
+    steps: [
+      step('people-access', 'auth-settings'),
+      { ...developer, input: '开发者在现有登录页面按公开接入说明调用 SandIAM 登录接口，并按实际开户方式接入注册或邀请。管理员提供客户主体与应用代码、允许的登录方式；复用已接入的页面与用户，无需重新开通。',
+        result: '自有登录页面取得当前应用的可信会话，并正确处理 MFA 或账号验证；不要求配置内置门户外观、资源或权限策略。' },
+      step('people-access', 'employee-login', {
+        label: '验证自有登录页面',
+        input: '由应用负责人提供现有登录入口。使用已开通的应用用户账号登录，不使用后台管理员账号；已有账号无需重新注册或邀请。',
+        result: '用户从自有页面登录本应用；错误密码被拒绝，退出后旧会话不可再访问账户。'
+      }),
+      step('people-access', 'identity'), step('people-access', 'audit')
+    ]
+  }
   if (goal.id === 'login' && method === 'register') return { ...goal, steps: goal.steps.map(item => item.key === 'identity-invitation' ? {
     ...item, key: 'self-register', label: '用户自行注册账号', permission: undefined, endpoint: undefined, contractStatus: 'runtime' as const,
     owner: '应用用户与部署负责人', input: '部署负责人启用账号生命周期与公开注册，管理员在认证策略中允许注册，并提供应用门户地址、组织及应用代码。用户从注册入口设置账号密码，无需另发邀请。',
@@ -103,6 +125,7 @@ export function resolveGuidanceGoal(value: unknown, method: unknown): GuidanceGo
 export function goalStepParams(item: GoalStep, context: TaskContext) {
   const params = taskStepParams(item.endpoint, context)
   if (!params) return null
+  if (item.endpoint === 'application-experience') return { ...params, status: 1 }
   if (item.endpoint && ['client', 'grant', 'credential'].includes(item.endpoint)) {
     if (context.environment_id === undefined) return null
     return { ...params, environment_id: context.environment_id,

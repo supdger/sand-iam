@@ -516,7 +516,7 @@ export const applicationExperienceFields: SandIamFormField[] = [
       { label: '关闭注册', value: 'disabled' }
     ],
     defaultValue: 'disabled',
-    help: '开放注册必须同时启用密码登录。邀请注册的接受页归后续任务。'
+    help: '内置门户自行开户请选择开放注册，并同时启用密码登录；仅接受管理员邀请请选择邀请注册。此设置还需与认证策略及部署开关一致。'
   }),
   field('login_methods', 'select', {
     required: true,
