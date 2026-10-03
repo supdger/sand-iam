@@ -50,12 +50,12 @@
 
 接入应用的具体用户类型和业务规则不属于该门槛；它们只是在 P0 能力完成后配置为用户类型与策略。
 
-## 应用策略内核接入（0.8.2 源码候选）
+## 应用策略内核接入（0.8.3 源码候选）
 
 归属 SandIAM，沿用 sand_iam_policy / sand_iam_policy_version 与公开授权、simulate、entity scope guard 契约；不新增表、路由或权限；范围检查审计使用下述迁移 043。固定 casbin/casbin 4.5.0、普通 Enforcer、只读 Adapter；runtime 和 simulate 共用 plugin/sand-iam/resources/casbin/application-policy.conf。条款从同 PDO 的短 REPEATABLE READ READ ONLY 快照读取，禁止外层旧事务冒充新快照；发布事务与执行阶段实体实时校验独立。已有应用、身份、角色、组与发布指针复用，非法或跨应用主体拒绝且记录 policy/version。条件的 equals/in 原语调用官方 Symfony ExpressionLanguage ===/in；只保留既有 JSON 形状和缺键语义桥接，不开放任意表达式。PolicyAuthorizer 保留公开薄门面，原自研主体匹配、角色遍历、优先级效果及模拟裁决已删除。机器服务 grant、凭据、网络、配额与执行前 revalidation 保持原职责。
 
 本次对应 OpenSpec integrate-casbin-policy-engine；正式交付须锁定 vendor/lock/model 与 SBOM、许可，区分源码、真实 Enforcer、PG、ZIP 与实际安装宿主证据。
 
-### 范围检查审计事件键（0.8.2 源码候选）
+### 范围检查审计事件键（0.8.3 源码候选）
 
-归属 SandIAM 现有 `sand_iam_audit_log`，主键、组织/应用归属和公开权限不变。新增迁移 `043_scope_audit_event_key.pgsql`：`event_key varchar(64) NOT NULL DEFAULT ''`，仅允许空或 64 位小写十六进制，并以 `(request_id, action, event_key)` 唯一约束替换原两字段约束。旧审计事实不改写；非 scope 审计保持空键及原请求/动作去重。scope 检查以版本化稳定 SHA-256 区分语义事件，重复事件不再发布副作用；原始可信属性不落入审计。0.8.2 的旧 43 条升级先精确准入，再同事务执行原 043，形成 44 条账本；已在 44 条的 0.8.1 升级只核对完整账本和六组捕获结构，不执行 DDL 或重放 043；接入已有 schema 只接受目标 44 条账本及真实捕获的新结构指纹。
+归属 SandIAM 现有 `sand_iam_audit_log`，主键、组织/应用归属和公开权限不变。新增迁移 `043_scope_audit_event_key.pgsql`：`event_key varchar(64) NOT NULL DEFAULT ''`，仅允许空或 64 位小写十六进制，并以 `(request_id, action, event_key)` 唯一约束替换原两字段约束。旧审计事实不改写；非 scope 审计保持空键及原请求/动作去重。scope 检查以版本化稳定 SHA-256 区分语义事件，重复事件不再发布副作用；原始可信属性不落入审计。0.8.3 的旧 43 条升级先精确准入，再同事务执行原 043，形成 44 条账本；已在 44 条的 0.8.1 / 0.8.2 升级只核对完整账本和六组捕获结构，不执行 DDL 或重放 043；接入已有 schema 只接受目标 44 条账本及真实捕获的新结构指纹。

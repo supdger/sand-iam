@@ -111,7 +111,7 @@ import {
   selectableGroupRoles,
   selectableGroupIdentities,
 } from "../src/views/plugin/sand-iam/api/identityLifecycleContracts";
-import { parseConditionOrScope } from "../src/views/plugin/sand-iam/api/policyJson";
+import { parseConditionOrScope, parseJsonObject } from "../src/views/plugin/sand-iam/api/policyJson";
 import {
   cascadedReferenceParams,
   choosePolicySubject,
@@ -566,6 +566,14 @@ assert.throws(
   () => parseConditionOrScope('{"contains":{}}', "策略生效条件"),
   /只允许 equals\/in/,
 );
+for (const empty of ["", "  ", "{}", "[]", "[ \n\t ]"]) {
+  assert.deepEqual(parseConditionOrScope(empty, "策略生效条件"), {});
+  assert.deepEqual(parseConditionOrScope(empty, "策略数据范围"), {});
+}
+for (const invalid of ["null", "[1]", '[{"equals":{"owner_id":3}}]', '{"equals":[]}', '{"in":[]}', "[", "false"]) {
+  assert.throws(() => parseConditionOrScope(invalid, "策略生效条件"), /SAND_IAM_VALIDATION_ERROR/);
+}
+assert.throws(() => parseJsonObject("[]", "普通 JSON 配置"), /必须是对象/);
 
 assert.equal(organizationFields[0]?.key, "name");
 assert.equal(organizationFields[1]?.key, "code");
