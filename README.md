@@ -2,9 +2,7 @@
 
 SandIAM 是 SandAdmin 的身份与访问管理插件。管理员用它管理应用用户、角色、权限、服务调用凭证和审计；接入开发者将登录和授权能力接入自己的业务系统。
 
-## 与 Casbin 的关系
-
-[Casbin](https://casbin.org/docs/overview/) 是授权策略库，不提供登录或身份服务。SandIAM 当前使用 [PHP-Casbin](https://github.com/php-casbin/php-casbin) **4.5.0** 作为应用用户策略内核，判定角色关系、资源动作、条件与允许/拒绝；版本随发行依赖管理，并非永久固定。
+SandIAM 当前使用 [PHP-Casbin](https://github.com/php-casbin/php-casbin) **4.5.0** 作为应用用户策略内核，判定角色关系、资源动作、条件与允许/拒绝；版本随发行依赖管理，并非永久固定。
 
 SandIAM 负责身份、组织与应用管理、策略配置和发布快照、范围校验及审计。接入业务负责提供可信属性、执行数据过滤，并在业务副作用前完成权限与状态复核。机器服务调用的凭证、服务授权、次数配额和执行前重验由 SandIAM 的服务调用链实现，不能把全部授权都称为 Casbin 判定。
 
