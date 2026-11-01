@@ -41,7 +41,7 @@ SandIAM 面向 SandAdmin 与业务服务接入；Casdoor 面向通用身份提�
 
 直接使用请下载 Release 附件中的完整 `sand-iam-<版本>.zip`，或在 SandAdmin 的“插件仓库”选择 SandIAM。GitHub 的 `Source code (zip)` 是源码压缩包，不是插件安装包。
 
-本仓包含插件后端、管理端源码和安装生命周期。开发与构建见 [开发指南](https://github.com/supdger/sand-iam/wiki/Development)与[构建校验](https://github.com/supdger/sand-iam/wiki/Build-tools)。详细操作指南统一维护在 Wiki；本次源码整改后的后续构建不再复制整套指南，已发布的 0.8.3 安装 ZIP 保留原载荷。离线操作前取得匹配版本指南。
+本仓包含插件后端、管理端源码和安装生命周期。开发与构建见 [开发指南](https://github.com/supdger/sand-iam/wiki/Development)与[构建校验](https://github.com/supdger/sand-iam/wiki/Build-tools)。详细操作指南统一维护在 Wiki；离线使用前请取得与所用版本匹配的副本。
 
 ## 安装与第一次使用
 
