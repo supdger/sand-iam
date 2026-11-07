@@ -3,6 +3,13 @@
 本文件只记录能够由当前公开源码、迁移和包契约复核的发行变化，不补写无法从权威来源确认的
 历史版本内容。日期标记为“待发布”的条目仍是候选，不代表已经上传、部署或公开发布。
 
+## 0.9.7（候选，待发布）
+
+- 新增「应用功能授权」两步式聚合授权后端（WP-A1）：`GET/POST /application/{application_id}/capabilities`（`ApplicationCapabilityController` + `ApplicationCapabilityService`），隐藏权限节点 `sand_iam:application_capability:index`/`save`（迁移 045，type 3 隐藏菜单，随 SandIAM 连接菜单分组并向既有连接/应用管理角色继承）。目录由 `ServiceCatalog` 声明驱动，服务元数据扩展 `group_name`/`audience`、动作扩展 `description`；缺中文名、缺中文说明或缺可解析分组的条目一律过滤并限频记录，不回退裸 action code 上屏；`sand_iam_service`/`sand_iam_service_action` 经迁移 044 增加对应列并做确定性中文回填，受众优先取声明值、其次由授权历史中唯一受众推导，歧义或为空保持 NULL。
+- 授权写路径为 serializable 事务 + `pg_advisory_xact_lock`（键含 application_id）+ 锁内 revision 复核 + 逐项 grant/revoke + 同事务审计；`Idempotency-Key` 按 actor/机构/应用/操作域隔离，指纹含规范化排序后的能力 ID、expected_revision 与策略版本，同键同指纹重放持久化结果（`idempotent_replay=true`），同键异指纹 409；重放先于 revision 校验，持久化结果不含任何明文凭证。撤销仅置 `status=2`+`revoked_time` 并保留历史行；重新勾选撤销项复用同一行恢复，`status=2` 且 `revoked_time` 为空的管理员停用行不静默复活，逐项中文冲突。
+- 环境与托管调用身份自动匹配：仅解析当前应用有效机构绑定；无候选时仅创建受控默认环境（`prod`/`生产环境`），多候选报中文冲突不取首行；每个 (environment, service) 复用或创建 `code=managed`、name「托管调用身份」、audience 取服务契约受众的 workload client，同 environment+code 唯一，绝不新建第二个，受众不符逐项冲突；禁用的环境/client/服务/动作/grant 一律不复活。POST 不返回、不落库任何明文凭证。
+- 版本声明、SBOM、冻结构建元数据与 `release/tools/build-upgrade-097.php` 同步为 0.9.7；`install.sql`/`update.sql`/`uninstall.sql` 由 `build-lifecycle.php` 重新生成（46 个迁移，revision 045 目录快照 `release/tools/resources/schema-045-catalog.json` 钉死校验）。真实 PostgreSQL fixture（`tests/application-capability-fixture.php`，scratch 库）覆盖目录过滤、revision 稳定、授权/撤销/重授权、幂等重放与冲突、禁用项不复活、审计原子性与无明文凭证断言。
+
 ## 0.9.6（候选，待发布）
 
 - 默认应用身份中性化：`AccessMatrixInput::DEFAULT_APPLICATION_CODE`/`DEFAULT_APPLICATION_NAME` 由产品定制值改为通用 `default-app`/`默认应用`，发布载荷不再携带行业定制预设。存量安装经两条不依赖旧字面量的兼容路径收敛：`lifecycle/default-application-rename.pgsql`（随 `update.sql` 下发的数据迁移）按结构签名——应用持有 `prod` 环境且其下 `sand-ai` 工作负载 client 受众为 `sand-ai`——识别自动供给链并就地把 code/name 更新为中性值；`AccessMatrixService::adoptProvisionedDefaultApplication` 在未跑升级生命周期的宿主上提供同等运行时收敛。标识均按数字 id 关联，环境、client、grant、凭证与审计引用不受影响，旧安装权限与引用保持可用；迁移幂等，重复执行收敛于同一状态，每机构至多改名一个候选。

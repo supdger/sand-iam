@@ -264,9 +264,11 @@ if (is_string($builderSource)
     $updateSource = $updateMatch[1];
 }
 preg_match_all("/^\\s*'([0-9]{3}_[^']+\\.pgsql)',$/m", $updateSource, $updateMatches);
-$updateMigrationNames = in_array($currentVersion, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)
-    ? ['043_scope_audit_event_key.pgsql']
-    : ($currentVersion === '0.7.6' ? [] : ($updateMatches[1] ?? []));
+$updateMigrationNames = $currentVersion === '0.9.7'
+    ? ['043_scope_audit_event_key.pgsql', '044_application_capability_directory.pgsql', '045_application_capability_permissions.pgsql']
+    : (in_array($currentVersion, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)
+        ? ['043_scope_audit_event_key.pgsql']
+        : ($currentVersion === '0.7.6' ? [] : ($updateMatches[1] ?? [])));
 if ($currentVersion === '0.7.3' && !is_file($root . '/migrations/042_permission_menu_hierarchy.pgsql')) {
     $manifestMigrationNames = array_values(array_diff($manifestMigrationNames, ['042_permission_menu_hierarchy.pgsql']));
 }
@@ -379,12 +381,17 @@ $assert('generated lifecycle separates full install from guarded versioned updat
             throw new RuntimeException('update replays historical migration ' . $name);
         }
     }
-    if (in_array($currentVersion, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) {
-        $preflightFile = in_array($currentVersion, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)
+    if (in_array($currentVersion, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)) {
+        $preflightFile = in_array($currentVersion, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)
             ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
             : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
         $preflight = (string) file_get_contents($root . $preflightFile);
-        if (in_array($currentVersion, ['0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) {
+        if ($currentVersion === '0.9.7') {
+            require_once $root . '/release/tools/build-upgrade-097.php';
+            if ($update !== sandIamBuild097Update($root)) {
+                throw new RuntimeException('0.9.7 update differs from strict43-46 admission and immutable043/044/045 conditional bodies');
+            }
+        } elseif (in_array($currentVersion, ['0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) {
             require_once $root . '/release/tools/build-upgrade-082.php';
             if ($update !== sandIamBuild082Update($root)) {
                 throw new RuntimeException('0.8.2 update differs from strict43/44 admission and immutable043 conditional body');
@@ -551,7 +558,7 @@ $assert('published 0.6.0 migration 021 remains byte-immutable in root and packag
 });
 
 $assert('current lifecycle generation preserves frozen SQL bytes', static function () use ($root, $currentVersion): bool {
-    if (!in_array($currentVersion, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) return true;
+    if (!in_array($currentVersion, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)) return true;
     $output = [];
     exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($root . '/release/tools/build-lifecycle.php') . ' --check 2>&1', $output, $status);
     if ($status !== 0) throw new RuntimeException(implode("\n", $output));
@@ -575,7 +582,7 @@ $assert('migration ledger catalogs the published baseline and versioned migratio
         return false;
     }
     foreach ($manifestMigrationNames as $name) {
-        if (in_array($name, ['039_service_grant_nullable_data_class.pgsql', '040_passkey_auth_challenge_identity.pgsql', '041_authorization_scope_integrity.pgsql', '042_permission_menu_hierarchy.pgsql', '043_scope_audit_event_key.pgsql'], true)) {
+        if (in_array($name, ['039_service_grant_nullable_data_class.pgsql', '040_passkey_auth_challenge_identity.pgsql', '041_authorization_scope_integrity.pgsql', '042_permission_menu_hierarchy.pgsql', '043_scope_audit_event_key.pgsql', '044_application_capability_directory.pgsql', '045_application_capability_permissions.pgsql'], true)) {
             continue;
         }
         if (!str_contains($ledger, "'{$name}'")) {
@@ -651,6 +658,23 @@ $assert('migration ledger catalogs the published baseline and versioned migratio
             || !str_contains($scope, "SELECT '043_scope_audit_event_key.pgsql', 43")
             || !str_contains($scope, '(SELECT count(*) FROM sand_iam_schema_migration) <> 44')
             || !str_contains($scope, 'UNIQUE (request_id, action, event_key)')) return false;
+    }
+    if (in_array('044_application_capability_directory.pgsql', $manifestMigrationNames, true)) {
+        $directory = (string) file_get_contents($root . '/migrations/044_application_capability_directory.pgsql');
+        if (preg_match("/WITH self_checksum\\(checksum\\) AS \\(VALUES \\('([0-9a-f]{64})'\\)\\)/", $directory, $directoryChecksum) !== 1
+            || hash('sha256', str_replace($directoryChecksum[1], '__SELF_SHA256__', $directory)) !== $directoryChecksum[1]
+            || !str_contains($directory, "SELECT '044_application_capability_directory.pgsql', 44")
+            || !str_contains($directory, '(SELECT count(*) FROM sand_iam_schema_migration) <> 45')
+            || !str_contains($directory, 'ADD COLUMN IF NOT EXISTS description')
+            || !str_contains($directory, 'ADD COLUMN IF NOT EXISTS group_name')) return false;
+    }
+    if (in_array('045_application_capability_permissions.pgsql', $manifestMigrationNames, true)) {
+        $permissions = (string) file_get_contents($root . '/migrations/045_application_capability_permissions.pgsql');
+        if (preg_match("/WITH self_checksum\\(checksum\\) AS \\(VALUES \\('([0-9a-f]{64})'\\)\\)/", $permissions, $permissionsChecksum) !== 1
+            || hash('sha256', str_replace($permissionsChecksum[1], '__SELF_SHA256__', $permissions)) !== $permissionsChecksum[1]
+            || !str_contains($permissions, "SELECT '045_application_capability_permissions.pgsql', 45")
+            || !str_contains($permissions, '(SELECT count(*) FROM sand_iam_schema_migration) <> 46')
+            || !str_contains($permissions, 'sand_iam:application_capability:save')) return false;
     }
     return str_contains($ledger, 'migration ledger checksum or package-version conflict; refusing to continue')
         && str_contains($ledger, 'exact legacy or ledger-backed relation fingerprint is incompatible')
