@@ -480,6 +480,46 @@ try {
 $assert($denyInside, 'in-lock permission re-check rejects with 403');
 $assert((int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save' AND outcome='denied'") === $auditDenyBefore + 3, 'in-lock denial audit persists after rollback');
 
+// --- 12. expire_time-aware grant verdict and audience filtering (audit B9) -----
+// An expired managed grant reads as not-granted, editing expire_time moves the
+// catalog revision, and re-selecting it conflicts instead of silently no-ops.
+$catExp = $service->catalog($appId, $access, $canSave);
+$exec("UPDATE sand_iam_service_grant SET expire_time = ? WHERE service_action_id = ? AND status = 1", [date('Y-m-d H:i:s', time() - 3600), $chatId]);
+$catExp2 = $service->catalog($appId, $access, $canSave);
+$assert($catExp2['revision'] !== $catExp['revision'], 'expire_time edit invalidates the catalog revision');
+$chatGrantedExpired = null;
+foreach ($catExp2['items'] as $row) { if ($row['id'] === (string) $chatId) $chatGrantedExpired = $row['granted']; }
+$assert($chatGrantedExpired === false, 'expired grant reports granted=false');
+$saveExp = $service->save($appId, ['capability_ids' => [(string) $chatId, (string) $docId], 'expected_revision' => $catExp2['revision']], 'expire-key-1', 1, $reqId(), $access, $canSave);
+$chatItem = null;
+foreach ($saveExp['result']['items'] as $row) { if ($row['id'] === (string) $chatId) $chatItem = $row; }
+$assert($chatItem !== null && $chatItem['ok'] === false && str_contains((string) $chatItem['message'], '已过期'), 're-selecting an expired grant surfaces a per-item conflict');
+$exec("UPDATE sand_iam_service_grant SET expire_time = ? WHERE service_action_id = ? AND status = 1", [date('Y-m-d H:i:s', time() + 86400), $chatId]);
+$catExpF = $service->catalog($appId, $access, $canSave);
+$chatGrantedFuture = null;
+foreach ($catExpF['items'] as $row) { if ($row['id'] === (string) $chatId) $chatGrantedFuture = $row['granted']; }
+$assert($chatGrantedFuture === true, 'a future expire_time keeps granted=true');
+$exec('UPDATE sand_iam_service_grant SET expire_time = NULL WHERE service_action_id = ?', [$chatId]);
+
+// Services whose audience cannot be resolved stay out of the directory: no
+// declared audience and no single inferred grant audience means every save
+// would fail per item, so the checkbox is never offered.
+$exec("INSERT INTO sand_iam_service (code, name, group_name, audience) VALUES ('no_audience', '无受众服务', '测试分组', NULL)");
+$noAudServiceId = (int) $scalar("SELECT id FROM sand_iam_service WHERE code='no_audience'");
+$exec("INSERT INTO sand_iam_service_action (service_id, code, name, description, status) VALUES (?, 'no_audience.action', '无受众功能', '受众无法解析时不应进入目录', 1)", [$noAudServiceId]);
+$noAudActionId = (int) $scalar("SELECT id FROM sand_iam_service_action WHERE code='no_audience.action'");
+$catAud = $service->catalog($appId, $access, $canSave);
+$audIds = array_column($catAud['items'], 'id');
+$assert(!in_array((string) $noAudActionId, $audIds, true), 'action on a service with unresolvable audience is filtered out');
+$exec("INSERT INTO sand_iam_service_grant (workload_client_id, service_action_id, audience, status) VALUES (?, ?, 'aud-single', 1)", [$clientId, $noAudActionId]);
+$catAud2 = $service->catalog($appId, $access, $canSave);
+$audIds2 = array_column($catAud2['items'], 'id');
+$assert(in_array((string) $noAudActionId, $audIds2, true), 'a single inferred grant audience makes the action visible again');
+$exec("INSERT INTO sand_iam_service_grant (workload_client_id, service_action_id, audience, status) VALUES (?, ?, 'aud-other', 1)", [$clientId, $noAudActionId]);
+$catAud3 = $service->catalog($appId, $access, $canSave);
+$audIds3 = array_column($catAud3['items'], 'id');
+$assert(!in_array((string) $noAudActionId, $audIds3, true), 'ambiguous inferred audiences filter the action out again');
+
 $db = null;
 unset($service, $access, $scalar, $exec, $seedAction, $reqId, $canSave);
 $dropFixture();

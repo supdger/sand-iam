@@ -335,7 +335,9 @@ final class ApplicationCapabilityService
             ->select()->toArray();
         $grantRows = [];
         foreach ($grants as $grant) {
-            $grantRows[] = [(int) $grant['service_action_id'], (string) $grant['audience'], (int) $grant['workload_client_id']];
+            // expire_time participates in the granted verdict, so editing it
+            // must invalidate held revisions just like grant status changes.
+            $grantRows[] = [(int) $grant['service_action_id'], (string) $grant['audience'], (int) $grant['workload_client_id'], (string) ($grant['expire_time'] ?? '')];
         }
         $clientRows = [];
         foreach ($clients as $client) {
@@ -373,6 +375,11 @@ final class ApplicationCapabilityService
             $serviceById[(int) $service['id']] = $service;
         }
         $actions = ServiceAction::where('status', 1)->order('id')->select()->toArray();
+        // Audience resolvability is a write-path precondition (managedClientFor
+        // rejects unresolvable audiences per item), so the directory resolves
+        // it up front and filters dead checkboxes instead of letting the UI
+        // offer grants that can only fail one by one.
+        $audienceResolvable = [];
         $items = [];
         foreach ($actions as $action) {
             $service = $serviceById[(int) $action['service_id']] ?? null;
@@ -390,6 +397,15 @@ final class ApplicationCapabilityService
                 ?? ($groupName === null ? 'group' : null);
             if ($reason !== null) {
                 $this->logFiltered((int) $action['id'], $reason);
+                continue;
+            }
+            $serviceId = (int) $service['id'];
+            $declaredAudience = is_string($service['audience'] ?? null) ? trim((string) $service['audience']) : '';
+            if (!array_key_exists($serviceId, $audienceResolvable)) {
+                $audienceResolvable[$serviceId] = $this->serviceAudience($serviceId, $declaredAudience) !== null;
+            }
+            if (!$audienceResolvable[$serviceId]) {
+                $this->logFiltered((int) $action['id'], 'audience');
                 continue;
             }
             $items[] = [
@@ -623,10 +639,16 @@ final class ApplicationCapabilityService
         if ($clientIds === []) {
             return false;
         }
+        // Same liveness predicate as IdentityContextProvider::resolveServiceGrants
+        // and ServiceGrantQuery::hasActiveGrant: an expired grant is not granted
+        // here either, so the directory cannot disagree with the runtime verdict.
         return ServiceGrant::whereIn('workload_client_id', $clientIds)
             ->where('service_action_id', (int) $item['action_id'])
             ->where('audience', $audience)
             ->where('status', 1)->whereNull('revoked_time')
+            ->where(static function ($query): void {
+                $query->whereNull('expire_time')->whereOr('expire_time', '>', date('Y-m-d H:i:s'));
+            })
             ->count() > 0;
     }
 
@@ -654,6 +676,15 @@ final class ApplicationCapabilityService
             ]);
             $this->auditGrant($adminId, $organizationId, $appId, $requestId, 'service_grant.create', (int) $grant->id, (string) $item['id']);
             return ['ok' => true, 'message' => ''];
+        }
+        // An expired grant row is already dead at runtime (isGranted applies
+        // the same expire_time predicate), so re-selecting it must surface a
+        // per-item conflict instead of reporting success on a no-op — the
+        // two-key flow never writes expire_time itself.
+        $grantExpired = $grant->expire_time !== null && $grant->expire_time !== ''
+            && strtotime((string) $grant->expire_time) <= time();
+        if ($grantExpired) {
+            return ['ok' => false, 'message' => '该功能授权已过期，请在授权管理中更新有效期后重试'];
         }
         if ((int) $grant->status === 1 && $grant->revoked_time === null) {
             return ['ok' => true, 'message' => ''];
