@@ -1,7 +1,14 @@
 <script setup lang="ts">
+  import { computed } from 'vue'
+  import { useRouter } from 'vue-router'
   import ResourceListPage from '../components/ResourceListPage.vue'
   import { applicationFields } from '../api/fields'
-  import type { SandIamFilterKey, SandIamResourceColumn } from '../api/types'
+  import type { SandIamFilterKey, SandIamResourceColumn, SandIamResourceRow } from '../api/types'
+  import { useAuth } from '@/hooks/core/useAuth'
+
+  const router = useRouter()
+  const { hasAuth } = useAuth()
+  const canGrantCapabilities = computed(() => hasAuth('sand_iam:application_capability:index'))
 
   const columns: SandIamResourceColumn[] = [
     { key: 'name', label: '名称', minWidth: 180 },
@@ -10,6 +17,15 @@
     { key: 'code', label: '系统代码（用于接口配置）', minWidth: 220, copyable: true }
   ]
   const filters: SandIamFilterKey[] = ['keywords', 'status', 'organization_id']
+
+  function openCapabilities(row: SandIamResourceRow): void {
+    const id = typeof row.id === 'number' ? row.id : Number(row.id)
+    if (!Number.isInteger(id) || id <= 0) return
+    void router.push({
+      path: '/sand-iam/application-capability',
+      query: { application_id: String(id) }
+    })
+  }
 </script>
 
 <template>
@@ -24,5 +40,17 @@
     :columns="columns"
     :filters="filters"
     :form-fields="applicationFields"
-  />
+  >
+    <template #row-actions="{ row }">
+      <ElButton
+        v-if="canGrantCapabilities"
+        size="small"
+        type="primary"
+        plain
+        @click="openCapabilities(row)"
+      >
+        开通功能
+      </ElButton>
+    </template>
+  </ResourceListPage>
 </template>
