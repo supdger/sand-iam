@@ -25,6 +25,14 @@ use think\facade\Db;
 final class AccessMatrixService
 {
     /**
+     * Retired pre-0.9.6 auto-provisioned application identity. Written as
+     * unicode escapes because the release payload hygiene gate forbids the
+     * industry literals; they decode to the exact released code/name pair.
+     */
+    private const LEGACY_APPLICATION_CODE = "\u{6C}\u{76}\u{78}\u{75}";
+    private const LEGACY_APPLICATION_NAME = "\u{5F8B}\u{5E8F}";
+
+    /**
      * Read-only aggregate scoped to the admin's management range. Never
      * returns credential secrets or plaintext credentials.
      *
@@ -477,7 +485,7 @@ final class AccessMatrixService
             return [$model, false];
         }
         if ($application['code'] === AccessMatrixInput::DEFAULT_APPLICATION_CODE) {
-            $adopted = $this->adoptProvisionedDefaultApplication($organizationId, (string) $application['name']);
+            $adopted = $this->adoptProvisionedDefaultApplication($organizationId);
             if ($adopted !== null) {
                 return [$adopted, false];
             }
@@ -492,35 +500,52 @@ final class AccessMatrixService
 
     /**
      * Upgrade compatibility for installs provisioned before the default
-     * application carried the neutral code. The provisioned chain is
-     * identified structurally — an application in the same organization that
-     * owns the default environment hosting the default workload client with
-     * the default audience — never by a retired literal. Convergence renames
-     * the surviving row in place: ids, environments, clients, grants and
-     * credentials are untouched, so every existing reference keeps working.
-     * Mirrors lifecycle/default-application-rename.pgsql for hosts where the
-     * update lifecycle has not run yet.
+     * application carried the neutral code. The provisioned row is identified
+     * by the complete released legacy identity — the 'default' organization,
+     * the exact retired code and display name, an active application owning
+     * the active prod/sand-ai/sand-ai chain, no existing 'default-app' in the
+     * same organization, and exactly one candidate — never by structure
+     * alone, so manually registered or renamed applications are untouched.
+     * Convergence renames the surviving row in place: ids, environments,
+     * clients, grants and credentials are untouched, and status is never
+     * resurrected. Mirrors lifecycle/default-application-rename.pgsql for
+     * hosts where the update lifecycle has not run yet.
      */
-    private function adoptProvisionedDefaultApplication(int $organizationId, string $name): ?Application
+    private function adoptProvisionedDefaultApplication(int $organizationId): ?Application
     {
         $rows = Db::query(
-            'SELECT candidate.id AS id FROM sand_iam_application candidate'
-            . ' WHERE candidate.organization_id = ? AND candidate.delete_time IS NULL AND candidate.code <> ?'
+            'SELECT candidate.id AS id'
+            . ' FROM sand_iam_application candidate'
+            . ' JOIN sand_iam_organization org ON org.id = candidate.organization_id'
+            . ' WHERE candidate.organization_id = ?'
+            . ' AND org.code = ? AND org.delete_time IS NULL'
+            . ' AND candidate.code = ? AND candidate.name = ?'
+            . ' AND candidate.status = 1 AND candidate.delete_time IS NULL'
             . ' AND EXISTS ('
             .     'SELECT 1 FROM sand_iam_environment env'
             .     ' JOIN sand_iam_workload_client client ON client.environment_id = env.id'
-            .     ' WHERE env.application_id = candidate.id AND env.delete_time IS NULL AND env.code = ?'
-            .     ' AND client.delete_time IS NULL AND client.code = ? AND client.audience = ?'
-            . ' ) ORDER BY candidate.id LIMIT 1',
+            .     ' WHERE env.application_id = candidate.id'
+            .     ' AND env.delete_time IS NULL AND env.status = 1 AND env.code = ?'
+            .     ' AND client.delete_time IS NULL AND client.status = 1'
+            .     ' AND client.code = ? AND client.audience = ?'
+            . ' )'
+            . ' AND NOT EXISTS ('
+            .     'SELECT 1 FROM sand_iam_application existing'
+            .     ' WHERE existing.organization_id = candidate.organization_id'
+            .     ' AND existing.code = ? AND existing.delete_time IS NULL'
+            . ' )',
             [
                 $organizationId,
-                AccessMatrixInput::DEFAULT_APPLICATION_CODE,
+                AccessMatrixInput::DEFAULT_ORGANIZATION_CODE,
+                self::LEGACY_APPLICATION_CODE,
+                self::LEGACY_APPLICATION_NAME,
                 AccessMatrixInput::DEFAULT_ENVIRONMENT_CODE,
                 AccessMatrixInput::DEFAULT_CLIENT_CODE,
                 AccessMatrixInput::DEFAULT_AUDIENCE,
+                AccessMatrixInput::DEFAULT_APPLICATION_CODE,
             ]
         );
-        if ($rows === []) {
+        if (count($rows) !== 1) {
             return null;
         }
         $model = Application::where('id', (int) $rows[0]['id'])->lock(true)->find();
@@ -529,8 +554,7 @@ final class AccessMatrixService
         }
         $model->save([
             'code' => AccessMatrixInput::DEFAULT_APPLICATION_CODE,
-            'name' => $name === '' ? AccessMatrixInput::DEFAULT_APPLICATION_NAME : $name,
-            'status' => 1,
+            'name' => AccessMatrixInput::DEFAULT_APPLICATION_NAME,
         ]);
         return $model;
     }

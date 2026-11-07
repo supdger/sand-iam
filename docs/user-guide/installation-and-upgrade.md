@@ -95,7 +95,7 @@ SandIAM 不负责创建数据库。请使用现有 SandAdmin 数据库；不要�
 
 结构指纹来自冻结安装载荷在 revision045 的 PostgreSQL 目录快照（`release/tools/resources/schema-045-catalog.json`）；迁移 046 只登记菜单与账本行，不改变 `sand_iam_*` 表结构。数据库通过仍须完成文件部署、版本登记、宿主管理端构建与激活，再验证允许、拒绝、同一请求多次范围检查及审计重试。47 条账本只证明迁移提交，不证明整个升级完成。
 
-升级尾部还会幂等应用 `lifecycle/menu-regroup.pgsql` 菜单分组收敛（0.8.5 引入）与 `lifecycle/default-application-rename.pgsql` 默认应用中性化改名（0.9.6 引入）：按稳定菜单 code 重排 `sand_system_menu` / `sand_system_role_menu`，重复执行收敛于同一状态；默认应用改名按结构签名识别自动供给链，每机构至多改名一个候选，不改环境、client、grant、凭证与审计引用。
+升级尾部还会幂等应用 `lifecycle/menu-regroup.pgsql` 菜单分组收敛（0.8.5 引入）与 `lifecycle/default-application-rename.pgsql` 默认应用中性化改名（0.9.6 引入）：按稳定菜单 code 重排 `sand_system_menu` / `sand_system_role_menu`，重复执行收敛于同一状态；默认应用改名仅在 `default` 机构内按完整遗留标识（固定 code/name、有效 `prod`/`sand-ai` 链、无既有 `default-app`、唯一候选）识别自动供给行，自建或改名过的应用不受影响，每机构至多改名一个候选，不改环境、client、grant、凭证与审计引用。
 
 ## 历史 0.7.3 / 0.7.5 升级到 0.7.6
 

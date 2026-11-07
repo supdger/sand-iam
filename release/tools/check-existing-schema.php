@@ -58,8 +58,8 @@ function sandIamCheckExistingSchema(string $root): void
     if (($info['version'] ?? '') === '0.9.7') {
         foreach ([
             '044_application_capability_directory.pgsql' => ['7e0b920249f8cc92ce7b35993c173b2c0ecc16ac17d3f71e0812bfea64cb59fc', 44],
-            '045_application_capability_permissions.pgsql' => ['3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6', 45],
-            '046_application_capability_menu.pgsql' => ['5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51', 46],
+            '045_application_capability_permissions.pgsql' => ['fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c', 45],
+            '046_application_capability_menu.pgsql' => ['7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473', 46],
         ] as $capabilityName => [$capabilityChecksum, $capabilityRevision]) {
             $capabilityMigration = (string) file_get_contents($root . '/migrations/' . $capabilityName);
             if ($capabilityMigration !== file_get_contents($root . '/plugin/sand-iam/migrations/' . $capabilityName)

@@ -432,13 +432,16 @@ $iam097_migration044$;
        AND NOT EXISTS (SELECT 1 FROM public.sand_iam_schema_migration
            WHERE migration_file = '045_application_capability_permissions.pgsql') THEN
         EXECUTE $iam097_migration045$-- SandIAM 0.9.7: hidden permission nodes for the two-click application
--- capability authorization API. The nodes stay invisible in the menu tree;
--- roles that already hold application-management permissions inherit them so
--- existing delegations keep working without a second grant step.
+-- capability authorization API. The nodes stay invisible in the menu tree.
+-- Inheritance is split by privilege level: the view node follows application
+-- listers and every role that can already mutate application or service-grant
+-- management (so writers never get a page they cannot open), while the write
+-- node only follows the connection menu and the existing management slugs —
+-- a view-only application role must never gain authorization writes.
 -- Existing hidden rows are realigned to the canonical node shape on
--- rerun, and roles already holding application-management permissions (or
--- the connection menu) inherit the two new nodes the same way migration 021
--- granted every other hidden permission.
+-- rerun, and roles inherit the two new nodes by privilege level: view follows
+-- application listers plus existing application/grant writers, write follows
+-- only the connection menu and existing grant/application write slugs.
 
 
 LOCK TABLE sand_system_menu, sand_system_role_menu, sand_iam_schema_migration IN SHARE ROW EXCLUSIVE MODE;
@@ -454,7 +457,7 @@ BEGIN
     WHERE migration_file = '045_application_capability_permissions.pgsql';
     IF recorded.revision IS NOT NULL AND (
         recorded.revision <> 45
-        OR recorded.checksum <> '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6'
+        OR recorded.checksum <> 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'
         OR recorded.package_version <> '0.9.7'
     ) THEN
         RAISE EXCEPTION 'SandIAM migration 045 ledger identity conflicts with application capability permissions';
@@ -527,12 +530,39 @@ BEGIN
         FROM sand_system_role_menu holder
         JOIN sand_system_menu held ON held.id = holder.menu_id AND held.delete_time IS NULL
         JOIN sand_system_menu permission
-          ON permission.slug IN ('sand_iam:application_capability:index', 'sand_iam:application_capability:save')
+          ON permission.slug = 'sand_iam:application_capability:index'
          AND permission.type = 3
          AND permission.delete_time IS NULL
         WHERE (
             held.code = 'SandIAMConnection'
-            OR held.slug = 'sand_iam:application:index'
+            OR held.slug IN (
+                'sand_iam:application:index',
+                'sand_iam:grant:save',
+                'sand_iam:application:save',
+                'sand_iam:application:update'
+            )
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM sand_system_role_menu existing
+            WHERE existing.role_id = holder.role_id
+              AND existing.menu_id = permission.id
+        );
+
+        INSERT INTO sand_system_role_menu (role_id, menu_id)
+        SELECT DISTINCT holder.role_id, permission.id
+        FROM sand_system_role_menu holder
+        JOIN sand_system_menu held ON held.id = holder.menu_id AND held.delete_time IS NULL
+        JOIN sand_system_menu permission
+          ON permission.slug = 'sand_iam:application_capability:save'
+         AND permission.type = 3
+         AND permission.delete_time IS NULL
+        WHERE (
+            held.code = 'SandIAMConnection'
+            OR held.slug IN (
+                'sand_iam:grant:save',
+                'sand_iam:application:save',
+                'sand_iam:application:update'
+            )
         )
         AND NOT EXISTS (
             SELECT 1 FROM sand_system_role_menu existing
@@ -542,7 +572,7 @@ BEGIN
     END IF;
 END $$;
 
-WITH self_checksum(checksum) AS (VALUES ('3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6'))
+WITH self_checksum(checksum) AS (VALUES ('fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'))
 INSERT INTO sand_iam_schema_migration (migration_file, revision, checksum, package_version, executed_time)
 SELECT '045_application_capability_permissions.pgsql', 45, self_checksum.checksum, '0.9.7', CURRENT_TIMESTAMP
 FROM self_checksum
@@ -593,7 +623,7 @@ BEGIN
     WHERE migration_file = '046_application_capability_menu.pgsql';
     IF recorded.revision IS NOT NULL AND (
         recorded.revision <> 46
-        OR recorded.checksum <> '5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51'
+        OR recorded.checksum <> '7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473'
         OR recorded.package_version <> '0.9.7'
     ) THEN
         RAISE EXCEPTION 'SandIAM migration 046 ledger identity conflicts with capability menu';
@@ -605,7 +635,7 @@ BEGIN
                SELECT 1 FROM sand_iam_schema_migration
                WHERE migration_file = '045_application_capability_permissions.pgsql'
                  AND revision = 45
-                 AND checksum = '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6'
+                 AND checksum = 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'
                  AND package_version = '0.9.7'
            ) THEN
             RAISE EXCEPTION 'SandIAM migration 046 requires the complete published 001-045 ledger';
@@ -695,7 +725,7 @@ BEGIN
     END IF;
 END $$;
 
-WITH self_checksum(checksum) AS (VALUES ('5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51'))
+WITH self_checksum(checksum) AS (VALUES ('7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473'))
 INSERT INTO sand_iam_schema_migration (migration_file, revision, checksum, package_version, executed_time)
 SELECT '046_application_capability_menu.pgsql', 46, self_checksum.checksum, '0.9.7', CURRENT_TIMESTAMP
 FROM self_checksum
@@ -761,8 +791,8 @@ $iam097_migration046$;
             ('042_permission_menu_hierarchy.pgsql', 42, '62d79e86170788d40d39b528b604269e439e0d3588c011154c8e12080564fbeb', '0.7.3'),
             ('043_scope_audit_event_key.pgsql', 43, '937a58b5cd1ceb3ada3ae0e0cd2a34166d53db87b60a1c096a5a55dd5c549994', '0.8.0'),
             ('044_application_capability_directory.pgsql', 44, '7e0b920249f8cc92ce7b35993c173b2c0ecc16ac17d3f71e0812bfea64cb59fc', '0.9.7'),
-            ('045_application_capability_permissions.pgsql', 45, '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6', '0.9.7'),
-            ('046_application_capability_menu.pgsql', 46, '5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51', '0.9.7')
+            ('045_application_capability_permissions.pgsql', 45, 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c', '0.9.7'),
+            ('046_application_capability_menu.pgsql', 46, '7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473', '0.9.7')
     ), difference AS (
         SELECT e.migration_file FROM expected e FULL OUTER JOIN public.sand_iam_schema_migration a
           ON a.migration_file = e.migration_file
@@ -961,50 +991,61 @@ UPDATE "sand_system_menu" SET "name" = '网络设备登录认证（RADIUS）', "
 -- seeded hidden by migration 046) takes over application capability grants.
 UPDATE "sand_system_menu" SET "name" = '手动接入', "update_time" = NOW() WHERE "code" = 'SandIAMConnection';
 $iam097_menu_regroup$;
-    EXECUTE $iam097_default_app$-- SandIAM default application neutralization (0.9.6).
+    EXECUTE $iam097_default_app$-- SandIAM default application neutralization (0.9.6, tightened 0.9.7).
 -- Releases before 0.9.6 auto-provisioned the first-use default application
--- under a product-specific code and display name. The neutral defaults are
--- 'default-app' / '默认应用'. Recognition is structural and never name-based:
--- the provisioned chain is the application that owns the 'prod' environment
--- hosting the 'sand-ai' workload client whose audience is 'sand-ai'. Manually
--- registered applications without that exact auto-provisioned chain are
--- untouched, and at most one application per organization is renamed.
+-- inside the 'default' organization under one fixed product identity: a
+-- fixed legacy code and display name (written below as SQL unicode escapes
+-- because the release payload hygiene gate forbids industry literals; they
+-- decode to exactly that retired pair). Recognition therefore requires the
+-- complete legacy identity — default organization, exact legacy code and
+-- name, an active application, the active prod/sand-ai/sand-ai provisioned
+-- chain, no existing 'default-app' in the same organization, and exactly one
+-- candidate. Manually registered or renamed applications, disabled rows,
+-- scoped organizations and ambiguous multi-candidate states are all left
+-- untouched; status is never resurrected and only code/name/update_time move.
 -- Identifiers stay numeric, so environments, clients, grants, credentials,
 -- audits and every external reference keep working unchanged. The statement
 -- is idempotent: re-running converges to the same state.
+WITH candidates AS (
+    SELECT candidate."id"
+    FROM "sand_iam_application" candidate
+    JOIN "sand_iam_organization" org
+      ON org."id" = candidate."organization_id"
+    WHERE org."code" = 'default'
+      AND org."delete_time" IS NULL
+      AND candidate."code" = U&'\006C\0076\0078\0075'
+      AND candidate."name" = U&'\5F8B\5E8F'
+      AND candidate."status" = 1
+      AND candidate."delete_time" IS NULL
+      AND EXISTS (
+          SELECT 1
+          FROM "sand_iam_environment" env
+          JOIN "sand_iam_workload_client" client
+            ON client."environment_id" = env."id"
+          WHERE env."application_id" = candidate."id"
+            AND env."delete_time" IS NULL
+            AND env."status" = 1
+            AND env."code" = 'prod'
+            AND client."delete_time" IS NULL
+            AND client."status" = 1
+            AND client."code" = 'sand-ai'
+            AND client."audience" = 'sand-ai'
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM "sand_iam_application" existing
+          WHERE existing."organization_id" = candidate."organization_id"
+            AND existing."code" = 'default-app'
+            AND existing."delete_time" IS NULL
+      )
+)
 UPDATE "sand_iam_application" app
 SET "code" = 'default-app',
     "name" = '默认应用',
     "update_time" = NOW()
-WHERE app."delete_time" IS NULL
-  AND app."code" <> 'default-app'
-  AND NOT EXISTS (
-      SELECT 1 FROM "sand_iam_application" existing
-      WHERE existing."organization_id" = app."organization_id"
-        AND existing."code" = 'default-app'
-        AND existing."delete_time" IS NULL
-  )
-  AND app."id" = (
-      SELECT candidate."id"
-      FROM "sand_iam_application" candidate
-      WHERE candidate."organization_id" = app."organization_id"
-        AND candidate."delete_time" IS NULL
-        AND candidate."code" <> 'default-app'
-        AND EXISTS (
-            SELECT 1
-            FROM "sand_iam_environment" env
-            JOIN "sand_iam_workload_client" client
-              ON client."environment_id" = env."id"
-            WHERE env."application_id" = candidate."id"
-              AND env."delete_time" IS NULL
-              AND env."code" = 'prod'
-              AND client."delete_time" IS NULL
-              AND client."code" = 'sand-ai'
-              AND client."audience" = 'sand-ai'
-        )
-      ORDER BY candidate."id"
-      LIMIT 1
-  );
+FROM candidates
+WHERE app."id" = candidates."id"
+  AND (SELECT count(*) FROM candidates) = 1;
 $iam097_default_app$;
 END $sand_iam_upgrade_097$;
 

@@ -51,8 +51,8 @@ function sandIamBuild097Update(string $root): string
         || hash('sha256', $oldAdmission) !== '4c4e867f013f33571129ea0ad62a00952e4a75fd4177ef68caf8fdb997e2c3f2'
         || hash('sha256', $migration043) !== '25b37adbb3cf28aebaf997fd25322b6c4798a6ce734d59d81896d32f0174be12'
         || hash('sha256', $migration044) !== '1f9754bb41468dc2a513b173bb3dd15fd73e3f3ceb7c493a09e6c4bcfbbe8913'
-        || hash('sha256', $migration045) !== 'd37ab6f53729cec302c841795d01a4a16b6166d4476449108c76174c9abc8c5f'
-        || hash('sha256', $migration046) !== '3b70480fddbc9b24e6cef60f48b3b9158e8510494d02e9e9fc870b53233c6884') {
+        || hash('sha256', $migration045) !== '158703a990e48bab0caa8522e0b5fc10262b6faece5635a7c765b7ecfa109214'
+        || hash('sha256', $migration046) !== 'a56075fc73f7d24368a516fafa11f0e6676ed86be2d3c7ebff3bb649bf18c4ff') {
         throw new RuntimeException('0.9.7 requires the original immutable revision043-046 sources');
     }
     $admissionStart = strpos($oldAdmission, 'DO $$');
@@ -73,8 +73,8 @@ function sandIamBuild097Update(string $root): string
     if (count($rows[0]) !== 43) throw new RuntimeException('Published43 ledger cannot be reused exactly');
     $values .= ",\n            ('043_scope_audit_event_key.pgsql', 43, '937a58b5cd1ceb3ada3ae0e0cd2a34166d53db87b60a1c096a5a55dd5c549994', '0.8.0')"
         . ",\n            ('044_application_capability_directory.pgsql', 44, '7e0b920249f8cc92ce7b35993c173b2c0ecc16ac17d3f71e0812bfea64cb59fc', '0.9.7')"
-        . ",\n            ('045_application_capability_permissions.pgsql', 45, '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6', '0.9.7')"
-        . ",\n            ('046_application_capability_menu.pgsql', 46, '5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51', '0.9.7')";
+        . ",\n            ('045_application_capability_permissions.pgsql', 45, 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c', '0.9.7')"
+        . ",\n            ('046_application_capability_menu.pgsql', 46, '7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473', '0.9.7')";
 
     // Query columns and ordering are copied exactly from the captured public
     // provider used for the revision043 capture.

@@ -102,7 +102,7 @@ final class ApplicationCapabilityService
         try {
             [$left, $right] = OnboardingService::advisoryKey((int) $organization->id, (int) $application->id);
             Db::query('SELECT pg_advisory_xact_lock(?, ?)', [$left, $right]);
-            $result = $operations->execute('admin', $actorRef, self::OPERATION, $receiptId, $fingerprint, 'application', function () use ($applicationId, $organization, $application, $desiredIds, $expectedRevision, $adminId, $requestId, $access, $canSave): array {
+            $result = $operations->execute('admin', $actorRef, self::OPERATION, $receiptId, $fingerprint, 'application', function () use ($applicationId, $organization, $application, $desiredIds, $expectedRevision, $adminId, $requestId, $receiptId, $access, $canSave): array {
                 return $this->applyInsideTransaction(
                     (int) $applicationId,
                     (int) $organization->id,
@@ -111,6 +111,7 @@ final class ApplicationCapabilityService
                     $expectedRevision,
                     $adminId,
                     $requestId,
+                    $receiptId,
                     $access,
                     $canSave,
                 );
@@ -144,8 +145,16 @@ final class ApplicationCapabilityService
     }
 
     /** @return array{resource_id:int,result:array<string,mixed>} */
-    private function applyInsideTransaction(int $applicationId, int $organizationId, int $appId, array $desiredIds, string $expectedRevision, int $adminId, string $requestId, AdminOrganizationAccess $access, callable $canSave): array
+    private function applyInsideTransaction(int $applicationId, int $organizationId, int $appId, array $desiredIds, string $expectedRevision, int $adminId, string $requestId, string $auditScope, AdminOrganizationAccess $access, callable $canSave): array
     {
+        // Audit request ids derive from the client request id AND the
+        // idempotency receipt: two saves sharing one X-Request-Id under
+        // different Idempotency-Key values must not collide on the audit
+        // (request_id, action, event_key) uniqueness key, while a same-key
+        // replay returns the stored result before reaching this code path
+        // and therefore writes no duplicate audit. Failed attempts roll back
+        // with the transaction, so a retried execution cannot double-write.
+        $requestId .= "\0" . $auditScope;
         // Re-verify scope and permission inside the write lock; the pre-checks
         // outside the transaction are only a fast path.
         $application = Application::where('id', $appId)->where('organization_id', $organizationId)->where('status', 1)->lock(true)->find();
@@ -522,7 +531,7 @@ final class ApplicationCapabilityService
                 $created = Environment::create([
                     'application_id' => $appId,
                     'code' => AccessMatrixInput::DEFAULT_ENVIRONMENT_CODE,
-                    'name' => '生产环境',
+                    'name' => AccessMatrixInput::DEFAULT_ENVIRONMENT_NAME,
                     'status' => 1,
                 ]);
                 (new AuditWriter())->write('admin', (string) $adminId, $organizationId, $appId, 'environment.create', 'environment', (int) $created->id, 'succeeded', $this->childRequestId($requestId, 'environment.create'), ['code' => AccessMatrixInput::DEFAULT_ENVIRONMENT_CODE]);

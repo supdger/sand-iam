@@ -3,16 +3,22 @@
 declare(strict_types=1);
 
 /**
- * 0.9.6 default-application neutralization fixture (development-only; never
- * ships in the release payload — `tests/` is outside the payload roots and is
- * also matched by the payload exclusion rule).
+ * 0.9.6/0.9.7 default-application neutralization fixture (development-only;
+ * never ships in the release payload — `tests/` is outside the payload roots
+ * and is also matched by the payload exclusion rule).
  *
  * Runs lifecycle/default-application-rename.pgsql plus the structurally
  * identical runtime-adoption probe from
  * AccessMatrixService::adoptProvisionedDefaultApplication against a scratch
- * PostgreSQL database. Usage:
+ * PostgreSQL database. The tightened fingerprint only converges the exact
+ * released auto-provisioned identity — default organization, legacy code and
+ * display name, active application, active prod/sand-ai/sand-ai chain, no
+ * existing default-app, exactly one candidate — so manually registered or
+ * renamed applications are never touched.
  *
- *   php tests/default-application-rename-fixture.php [dsn-dbname]
+ * Usage:
+ *
+ *   php tests/default-application-rename-fixture.php
  *
  * The scratch database is created and dropped by this script; pass a PDO pgsql
  * admin DSN via SAND_IAM_FIXTURE_ADMIN_DSN (default local trust socket).
@@ -118,20 +124,33 @@ $renameSql = file_get_contents(dirname(__DIR__) . '/lifecycle/default-applicatio
 if (!is_string($renameSql) || trim($renameSql) === '') $fail('lifecycle rename source unreadable');
 
 // The runtime probe mirrors AccessMatrixService::adoptProvisionedDefaultApplication
-// verbatim (PDO binds stand in for think\facade\Db placeholders).
-$probeSql = 'SELECT candidate.id AS id FROM sand_iam_application candidate'
-    . ' WHERE candidate.organization_id = ? AND candidate.delete_time IS NULL AND candidate.code <> ?'
+// verbatim (PDO binds stand in for think\facade\Db placeholders): same org join,
+// same legacy identity literals, same active-chain and uniqueness guards.
+$probeSql = 'SELECT candidate.id AS id'
+    . ' FROM sand_iam_application candidate'
+    . ' JOIN sand_iam_organization org ON org.id = candidate.organization_id'
+    . ' WHERE candidate.organization_id = ?'
+    . ' AND org.code = ? AND org.delete_time IS NULL'
+    . ' AND candidate.code = ? AND candidate.name = ?'
+    . ' AND candidate.status = 1 AND candidate.delete_time IS NULL'
     . ' AND EXISTS ('
     .     'SELECT 1 FROM sand_iam_environment env'
     .     ' JOIN sand_iam_workload_client client ON client.environment_id = env.id'
-    .     ' WHERE env.application_id = candidate.id AND env.delete_time IS NULL AND env.code = ?'
-    .     ' AND client.delete_time IS NULL AND client.code = ? AND client.audience = ?'
-    . ' ) ORDER BY candidate.id LIMIT 1';
+    .     ' WHERE env.application_id = candidate.id'
+    .     ' AND env.delete_time IS NULL AND env.status = 1 AND env.code = ?'
+    .     ' AND client.delete_time IS NULL AND client.status = 1'
+    .     ' AND client.code = ? AND client.audience = ?'
+    . ' )'
+    . ' AND NOT EXISTS ('
+    .     'SELECT 1 FROM sand_iam_application existing'
+    .     ' WHERE existing.organization_id = candidate.organization_id'
+    .     ' AND existing.code = ? AND existing.delete_time IS NULL'
+    . ' )';
 $probe = static function (int $organizationId) use ($db, $probeSql): ?int {
     $st = $db->prepare($probeSql);
-    $st->execute([$organizationId, 'default-app', 'prod', 'sand-ai', 'sand-ai']);
-    $id = $st->fetchColumn();
-    return $id === false ? null : (int) $id;
+    $st->execute([$organizationId, 'default', 'lvxu', '律序', 'prod', 'sand-ai', 'sand-ai', 'default-app']);
+    $ids = array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+    return count($ids) === 1 ? $ids[0] : null;
 };
 
 $scalar = static function (string $sql, array $args = []) use ($db): mixed {
@@ -139,88 +158,142 @@ $scalar = static function (string $sql, array $args = []) use ($db): mixed {
     $st->execute($args);
     return $st->fetchColumn();
 };
-
-// --- Fixture A: legacy install state (pre-0.9.6 provisioned chain) ----------
 $exec = static function (string $sql, array $args = []) use ($db): void {
     $db->prepare($sql)->execute($args);
 };
+$resetTables = static function () use ($db): void {
+    $db->exec('TRUNCATE sand_iam_service_grant, sand_iam_workload_client, sand_iam_environment, sand_iam_application, sand_iam_organization RESTART IDENTITY CASCADE');
+};
+// Seeds one application plus the default provisioned chain; every flag can be
+// flipped to build a negative fingerprint case.
+$seedApp = static function (int $orgId, string $code, string $name, array $opts = []) use ($exec, $scalar): int {
+    $appStatus = $opts['app_status'] ?? 1;
+    $exec('INSERT INTO sand_iam_application (organization_id, code, name, status) VALUES (?, ?, ?, ?)', [$orgId, $code, $name, $appStatus]);
+    $appId = (int) $scalar('SELECT id FROM sand_iam_application WHERE organization_id=? AND code=?', [$orgId, $code]);
+    if (($opts['chain'] ?? true) === false) {
+        return $appId;
+    }
+    $envStatus = $opts['env_status'] ?? 1;
+    $clientStatus = $opts['client_status'] ?? 1;
+    $envCode = $opts['env_code'] ?? 'prod';
+    $clientCode = $opts['client_code'] ?? 'sand-ai';
+    $clientAudience = $opts['client_audience'] ?? 'sand-ai';
+    $exec('INSERT INTO sand_iam_environment (application_id, code, name, status) VALUES (?, ?, ?, ?)', [$appId, $envCode, '正式', $envStatus]);
+    $envId = (int) $scalar('SELECT id FROM sand_iam_environment WHERE application_id=? AND code=?', [$appId, $envCode]);
+    $exec('INSERT INTO sand_iam_workload_client (environment_id, code, name, audience, status) VALUES (?, ?, ?, ?, ?)',
+        [$envId, $clientCode, 'AI 服务调用', $clientAudience, $clientStatus]);
+    $clientId = (int) $scalar('SELECT id FROM sand_iam_workload_client WHERE environment_id=?', [$envId]);
+    $exec('INSERT INTO sand_iam_service_grant (workload_client_id, service_action_id, audience) VALUES (?, 7, ?)', [$clientId, $clientAudience]);
+    return $appId;
+};
+$appRow = static function (int $appId) use ($db): array {
+    return $db->query('SELECT id, code, name, status FROM sand_iam_application WHERE id=' . $appId)->fetch(PDO::FETCH_ASSOC);
+};
+
+// --- Fixture A: legacy install state (pre-0.9.6 provisioned chain) ----------
+$resetTables();
 $exec("INSERT INTO sand_iam_organization (code, name) VALUES ('default', '本机构'), ('tenant-x', '租户甲')");
 $orgDefault = (int) $scalar("SELECT id FROM sand_iam_organization WHERE code='default'");
 $orgTenant = (int) $scalar("SELECT id FROM sand_iam_organization WHERE code='tenant-x'");
 
-// legacy provisioned application in the default org (fixture-only literals —
-// this file is a development fixture and never enters the release payload)
-$exec("INSERT INTO sand_iam_application (organization_id, code, name) VALUES (?, 'lvxu', '律序')", [$orgDefault]);
-$legacyAppId = (int) $scalar("SELECT id FROM sand_iam_application WHERE code='lvxu'");
-$exec("INSERT INTO sand_iam_environment (application_id, code, name) VALUES (?, 'prod', '正式')", [$legacyAppId]);
+// The exact released auto-provisioned identity in the default org.
+$legacyAppId = $seedApp($orgDefault, 'lvxu', '律序');
 $legacyEnvId = (int) $scalar('SELECT id FROM sand_iam_environment WHERE application_id=?', [$legacyAppId]);
-$exec("INSERT INTO sand_iam_workload_client (environment_id, code, name, audience) VALUES (?, 'sand-ai', 'AI 服务调用', 'sand-ai')", [$legacyEnvId]);
 $legacyClientId = (int) $scalar('SELECT id FROM sand_iam_workload_client WHERE environment_id=?', [$legacyEnvId]);
-$exec("INSERT INTO sand_iam_service_grant (workload_client_id, service_action_id, audience) VALUES (?, 7, 'sand-ai')", [$legacyClientId]);
 
-// tenant org also carries a provisioned chain (scoped-admin provisioning)
-$exec("INSERT INTO sand_iam_application (organization_id, code, name) VALUES (?, 'lvxu', '律序')", [$orgTenant]);
-$tenantAppId = (int) $scalar("SELECT id FROM sand_iam_application WHERE organization_id=? AND code='lvxu'", [$orgTenant]);
-$exec("INSERT INTO sand_iam_environment (application_id, code, name) VALUES (?, 'prod', '正式')", [$tenantAppId]);
-$tenantEnvId = (int) $scalar('SELECT id FROM sand_iam_environment WHERE application_id=?', [$tenantAppId]);
-$exec("INSERT INTO sand_iam_workload_client (environment_id, code, name, audience) VALUES (?, 'sand-ai', 'AI 服务调用', 'sand-ai')", [$tenantEnvId]);
+// A scoped organization carrying the same legacy-looking chain must NOT move:
+// the fingerprint is pinned to organization.code='default'.
+$tenantAppId = $seedApp($orgTenant, 'lvxu', '律序');
 
-// an unrelated user application with a different chain must never move
-$exec("INSERT INTO sand_iam_application (organization_id, code, name) VALUES (?, 'custom-x', '自定义应用')", [$orgDefault]);
-$customAppId = (int) $scalar("SELECT id FROM sand_iam_application WHERE code='custom-x'");
-$exec("INSERT INTO sand_iam_environment (application_id, code, name) VALUES (?, 'staging', '预发')", [$customAppId]);
-$customEnvId = (int) $scalar('SELECT id FROM sand_iam_environment WHERE application_id=?', [$customAppId]);
-$exec("INSERT INTO sand_iam_workload_client (environment_id, code, name, audience) VALUES (?, 'custom-agent', '自有调用', 'custom-agent')", [$customEnvId]);
+// A manually registered application with a different chain must never move.
+$customAppId = $seedApp($orgDefault, 'custom-x', '自定义应用', [
+    'env_code' => 'staging', 'env_status' => 1,
+    'client_code' => 'custom-agent', 'client_audience' => 'custom-agent',
+]);
 
 echo "--- runtime probe (pre-migration) ---\n";
 $assert($probe($orgDefault) === $legacyAppId, 'runtime probe identifies the provisioned application in the default org');
-$assert($probe($orgTenant) === $tenantAppId, 'runtime probe identifies the provisioned application in a scoped org');
+$assert($probe($orgTenant) === null, 'runtime probe ignores the same chain outside the default organization');
 
-echo "--- lifecycle rename, first run ---\n";
 $db->exec($renameSql);
-$row = $db->query('SELECT id, code, name, status FROM sand_iam_application WHERE id=' . $legacyAppId)->fetch(PDO::FETCH_ASSOC);
+$row = $appRow($legacyAppId);
 $assert($row['code'] === 'default-app' && $row['name'] === '默认应用' && (int) $row['id'] === $legacyAppId,
     'legacy provisioned row converges to default-app/默认应用 in place (id preserved)');
-$row = $db->query('SELECT id, code, name FROM sand_iam_application WHERE id=' . $tenantAppId)->fetch(PDO::FETCH_ASSOC);
-$assert($row['code'] === 'default-app', 'scoped-org provisioned row converges too');
-$assert((string) $scalar('SELECT code FROM sand_iam_application WHERE id=?', [$customAppId]) === 'custom-x',
-    'unrelated application untouched');
+$row = $appRow($tenantAppId);
+$assert($row['code'] === 'lvxu' && $row['name'] === '律序', 'scoped-org provisioned-looking row is left untouched');
+$assert((string) $appRow($customAppId)['code'] === 'custom-x', 'unrelated application untouched');
 $assert((int) $scalar('SELECT application_id FROM sand_iam_environment WHERE id=?', [$legacyEnvId]) === $legacyAppId,
     'environment keeps referencing the same application id');
-$assert((int) $scalar('SELECT workload_client_id FROM sand_iam_service_grant WHERE service_action_id=7') === $legacyClientId,
+$assert((int) $scalar('SELECT workload_client_id FROM sand_iam_service_grant WHERE service_action_id=7 AND workload_client_id=?', [$legacyClientId]) === $legacyClientId,
     'service grant keeps referencing the same workload client id');
 $assert($probe($orgDefault) === null, 'runtime probe finds nothing left to adopt after migration');
 
 echo "--- lifecycle rename, second run (idempotency) ---\n";
 $db->exec($renameSql);
-$assert((int) $scalar("SELECT count(*) FROM sand_iam_application WHERE code='default-app'") === 2,
-    'second run is a no-op (one renamed application per org)');
+$assert((int) $scalar("SELECT count(*) FROM sand_iam_application WHERE code='default-app'") === 1,
+    'second run is a no-op (only the default-org legacy row converged)');
 
 // --- Fixture B: default-app already registered, leftover provisioned row ----
-$exec('TRUNCATE sand_iam_service_grant, sand_iam_workload_client, sand_iam_environment, sand_iam_application, sand_iam_organization RESTART IDENTITY CASCADE');
+$resetTables();
 $exec("INSERT INTO sand_iam_organization (code, name) VALUES ('default', '本机构')");
 $orgDefault = (int) $scalar("SELECT id FROM sand_iam_organization WHERE code='default'");
 $exec("INSERT INTO sand_iam_application (organization_id, code, name) VALUES (?, 'default-app', '默认应用')", [$orgDefault]);
-$exec("INSERT INTO sand_iam_application (organization_id, code, name) VALUES (?, 'lvxu', '律序')", [$orgDefault]);
-$leftoverId = (int) $scalar("SELECT id FROM sand_iam_application WHERE code='lvxu'");
-$exec("INSERT INTO sand_iam_environment (application_id, code, name) VALUES (?, 'prod', '正式')", [$leftoverId]);
-$env = (int) $scalar('SELECT id FROM sand_iam_environment WHERE application_id=?', [$leftoverId]);
-$exec("INSERT INTO sand_iam_workload_client (environment_id, code, name, audience) VALUES (?, 'sand-ai', 'AI 服务调用', 'sand-ai')", [$env]);
+$leftoverId = $seedApp($orgDefault, 'lvxu', '律序');
 $db->exec($renameSql);
-$assert((string) $scalar('SELECT code FROM sand_iam_application WHERE id=?', [$leftoverId]) === 'lvxu',
+$assert((string) $appRow($leftoverId)['code'] === 'lvxu',
     'existing default-app registration wins: leftover row is not renamed onto it');
 $assert((int) $scalar("SELECT count(*) FROM sand_iam_application WHERE code='default-app'") === 1,
     'no duplicate default-app after guarded rename');
 
 // --- Fixture C: fresh install (empty) ----------------------------------------
-$exec('TRUNCATE sand_iam_service_grant, sand_iam_workload_client, sand_iam_environment, sand_iam_application, sand_iam_organization RESTART IDENTITY CASCADE');
+$resetTables();
 $db->exec($renameSql);
 $assert((int) $scalar('SELECT count(*) FROM sand_iam_application') === 0, 'fresh install state: rename is a no-op');
+
+// --- Fixture D: tightened fingerprint negatives -------------------------------
+// Each case builds one default-org application that shares part of the legacy
+// shape but must never be renamed; status is never resurrected either.
+$negativeCases = [
+    'custom display name on the legacy code' => ['lvxu', '自定义应用名'],
+    'legacy display name on a custom code' => ['other-app', '律序'],
+    'self-built application with the full default chain' => ['my-app', '我的应用'],
+];
+foreach ($negativeCases as $label => [$code, $name]) {
+    $resetTables();
+    $exec("INSERT INTO sand_iam_organization (code, name) VALUES ('default', '本机构')");
+    $orgDefault = (int) $scalar("SELECT id FROM sand_iam_organization WHERE code='default'");
+    $appId = $seedApp($orgDefault, $code, $name);
+    $db->exec($renameSql);
+    $row = $appRow($appId);
+    $assert($row['code'] === $code && $row['name'] === $name, "negative case untouched: {$label}");
+    $assert($probe($orgDefault) === null, "runtime probe also declines: {$label}");
+}
+
+$stateCases = [
+    'disabled application is not resurrected' => ['app_status' => 2],
+    'disabled environment breaks the active chain' => ['env_status' => 2],
+    'disabled workload client breaks the active chain' => ['client_status' => 2],
+    'non-default environment code' => ['env_code' => 'staging'],
+    'non-default client code' => ['client_code' => 'custom-agent'],
+    'non-default client audience' => ['client_audience' => 'other-audience'],
+    'application without the provisioned chain' => ['chain' => false],
+];
+foreach ($stateCases as $label => $opts) {
+    $resetTables();
+    $exec("INSERT INTO sand_iam_organization (code, name) VALUES ('default', '本机构')");
+    $orgDefault = (int) $scalar("SELECT id FROM sand_iam_organization WHERE code='default'");
+    $appId = $seedApp($orgDefault, 'lvxu', '律序', $opts);
+    $db->exec($renameSql);
+    $row = $appRow($appId);
+    $assert($row['code'] === 'lvxu' && $row['name'] === '律序' && (int) $row['status'] === ($opts['app_status'] ?? 1),
+        "state guard holds: {$label}");
+    $assert($probe($orgDefault) === null, "runtime probe also declines: {$label}");
+}
 
 // Release the fixture connection — including the references held by the $probe
 // / $scalar / $exec closures — before dropping; WITH (FORCE) is the fallback.
 $db = null;
-unset($probe, $scalar, $exec);
+unset($probe, $scalar, $exec, $resetTables, $seedApp, $appRow);
 $dropFixture();
 $fixtureDropped = true;
 echo "ALL FIXTURE ASSERTIONS PASSED; scratch database {$fixtureDb} dropped\n";

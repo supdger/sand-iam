@@ -1,11 +1,14 @@
 -- SandIAM 0.9.7: hidden permission nodes for the two-click application
--- capability authorization API. The nodes stay invisible in the menu tree;
--- roles that already hold application-management permissions inherit them so
--- existing delegations keep working without a second grant step.
+-- capability authorization API. The nodes stay invisible in the menu tree.
+-- Inheritance is split by privilege level: the view node follows application
+-- listers and every role that can already mutate application or service-grant
+-- management (so writers never get a page they cannot open), while the write
+-- node only follows the connection menu and the existing management slugs —
+-- a view-only application role must never gain authorization writes.
 -- Existing hidden rows are realigned to the canonical node shape on
--- rerun, and roles already holding application-management permissions (or
--- the connection menu) inherit the two new nodes the same way migration 021
--- granted every other hidden permission.
+-- rerun, and roles inherit the two new nodes by privilege level: view follows
+-- application listers plus existing application/grant writers, write follows
+-- only the connection menu and existing grant/application write slugs.
 BEGIN;
 
 LOCK TABLE sand_system_menu, sand_system_role_menu, sand_iam_schema_migration IN SHARE ROW EXCLUSIVE MODE;
@@ -21,7 +24,7 @@ BEGIN
     WHERE migration_file = '045_application_capability_permissions.pgsql';
     IF recorded.revision IS NOT NULL AND (
         recorded.revision <> 45
-        OR recorded.checksum <> '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6'
+        OR recorded.checksum <> 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'
         OR recorded.package_version <> '0.9.7'
     ) THEN
         RAISE EXCEPTION 'SandIAM migration 045 ledger identity conflicts with application capability permissions';
@@ -94,12 +97,39 @@ BEGIN
         FROM sand_system_role_menu holder
         JOIN sand_system_menu held ON held.id = holder.menu_id AND held.delete_time IS NULL
         JOIN sand_system_menu permission
-          ON permission.slug IN ('sand_iam:application_capability:index', 'sand_iam:application_capability:save')
+          ON permission.slug = 'sand_iam:application_capability:index'
          AND permission.type = 3
          AND permission.delete_time IS NULL
         WHERE (
             held.code = 'SandIAMConnection'
-            OR held.slug = 'sand_iam:application:index'
+            OR held.slug IN (
+                'sand_iam:application:index',
+                'sand_iam:grant:save',
+                'sand_iam:application:save',
+                'sand_iam:application:update'
+            )
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM sand_system_role_menu existing
+            WHERE existing.role_id = holder.role_id
+              AND existing.menu_id = permission.id
+        );
+
+        INSERT INTO sand_system_role_menu (role_id, menu_id)
+        SELECT DISTINCT holder.role_id, permission.id
+        FROM sand_system_role_menu holder
+        JOIN sand_system_menu held ON held.id = holder.menu_id AND held.delete_time IS NULL
+        JOIN sand_system_menu permission
+          ON permission.slug = 'sand_iam:application_capability:save'
+         AND permission.type = 3
+         AND permission.delete_time IS NULL
+        WHERE (
+            held.code = 'SandIAMConnection'
+            OR held.slug IN (
+                'sand_iam:grant:save',
+                'sand_iam:application:save',
+                'sand_iam:application:update'
+            )
         )
         AND NOT EXISTS (
             SELECT 1 FROM sand_system_role_menu existing
@@ -109,7 +139,7 @@ BEGIN
     END IF;
 END $$;
 
-WITH self_checksum(checksum) AS (VALUES ('3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6'))
+WITH self_checksum(checksum) AS (VALUES ('fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'))
 INSERT INTO sand_iam_schema_migration (migration_file, revision, checksum, package_version, executed_time)
 SELECT '045_application_capability_permissions.pgsql', 45, self_checksum.checksum, '0.9.7', CURRENT_TIMESTAMP
 FROM self_checksum

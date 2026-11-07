@@ -303,7 +303,7 @@ $assert($save1['result']['granted_count'] === 2, 'granted_count reports 2');
 $assert($save1['replayed'] === false, 'first save is not a replay');
 $envId = (int) $scalar("SELECT id FROM sand_iam_environment WHERE application_id=? AND code='prod'", [$appId]);
 $assert($envId > 0, 'prod environment auto-created');
-$assert((string) $scalar('SELECT name FROM sand_iam_environment WHERE id=?', [$envId]) === '生产环境', 'environment name is 生产环境');
+$assert((string) $scalar('SELECT name FROM sand_iam_environment WHERE id=?', [$envId]) === '正式', 'environment name matches the shared default environment label');
 $clientId = (int) $scalar("SELECT id FROM sand_iam_workload_client WHERE environment_id=? AND code='managed'", [$envId]);
 $assert($clientId > 0 && (string) $scalar('SELECT audience FROM sand_iam_workload_client WHERE id=?', [$clientId]) === 'sand-ai', 'managed workload client created with contract audience');
 $assert((int) $scalar('SELECT count(*) FROM sand_iam_service_grant WHERE workload_client_id=? AND status=1', [$clientId]) === 2, 'two active grants persisted');
@@ -410,6 +410,28 @@ $conflictItem = $save7['result']['items'][0] ?? null;
 $assert($conflictItem !== null && $conflictItem['ok'] === false && str_contains((string) $conflictItem['message'], '多个托管绑定环境'), 'ambiguous managed bindings surface a Chinese conflict, never first-row fallback');
 $exec('DELETE FROM sand_iam_workload_client WHERE environment_id=?', [$stagingEnvId]);
 $exec('DELETE FROM sand_iam_environment WHERE id=?', [$stagingEnvId]);
+
+// --- 9b. Shared X-Request-Id across distinct idempotency keys (audit B7) -----
+// Two saves carrying the same client request id but different Idempotency-Key
+// values derive distinct audit request ids, so the (request_id, action,
+// event_key) uniqueness key cannot roll back the second business write.
+$sharedReq = 'b7shared-request-id-0001';
+$catB7a = $service->catalog($appId, $access, $canSave);
+$auditB7Before = (int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save'");
+$distinctB7Before = (int) $scalar("SELECT count(DISTINCT request_id) FROM sand_iam_audit_log WHERE action='application_capability.save'");
+$saveB7a = $service->save($appId, ['capability_ids' => [(string) $chatId], 'expected_revision' => $catB7a['revision']], 'b7-key-alpha', 1, $sharedReq, $access, $canSave);
+$assert($saveB7a['replayed'] === false && $saveB7a['result']['status'] === 'success', 'first save under the shared request id succeeds');
+$catB7b = $service->catalog($appId, $access, $canSave);
+$saveB7b = $service->save($appId, ['capability_ids' => [(string) $chatId, (string) $docId], 'expected_revision' => $catB7b['revision']], 'b7-key-beta', 1, $sharedReq, $access, $canSave);
+$assert($saveB7b['replayed'] === false && $saveB7b['result']['status'] === 'success', 'second save reusing the request id with another key also succeeds');
+$assert((int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save'") === $auditB7Before + 2,
+    'both saves persisted their own summary audit without a uniqueness conflict');
+$assert((int) $scalar("SELECT count(DISTINCT request_id) FROM sand_iam_audit_log WHERE action='application_capability.save'") === $distinctB7Before + 2,
+    'the two summary audits carry distinct derived request ids');
+$saveB7replay = $service->save($appId, ['capability_ids' => [(string) $chatId, (string) $docId], 'expected_revision' => $catB7b['revision']], 'b7-key-beta', 1, $sharedReq, $access, $canSave);
+$assert($saveB7replay['replayed'] === true, 'same key + fingerprint under the shared request id still replays');
+$assert((int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save'") === $auditB7Before + 2,
+    'idempotent replay adds no audit rows');
 
 // --- 10. Audit request correlation ----------------------------------------------
 $auditRows = (int) $scalar("SELECT count(DISTINCT request_id) FROM sand_iam_audit_log WHERE action='application_capability.save'");
