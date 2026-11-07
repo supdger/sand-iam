@@ -3,6 +3,11 @@
 本文件只记录能够由当前公开源码、迁移和包契约复核的发行变化，不补写无法从权威来源确认的
 历史版本内容。日期标记为“待发布”的条目仍是候选，不代表已经上传、部署或公开发布。
 
+## 0.9.6（候选，待发布）
+
+- 默认应用身份中性化：`AccessMatrixInput::DEFAULT_APPLICATION_CODE`/`DEFAULT_APPLICATION_NAME` 由产品定制值改为通用 `default-app`/`默认应用`，发布载荷不再携带行业定制预设。存量安装经两条不依赖旧字面量的兼容路径收敛：`lifecycle/default-application-rename.pgsql`（随 `update.sql` 下发的数据迁移）按结构签名——应用持有 `prod` 环境且其下 `sand-ai` 工作负载 client 受众为 `sand-ai`——识别自动供给链并就地把 code/name 更新为中性值；`AccessMatrixService::adoptProvisionedDefaultApplication` 在未跑升级生命周期的宿主上提供同等运行时收敛。标识均按数字 id 关联，环境、client、grant、凭证与审计引用不受影响，旧安装权限与引用保持可用；迁移幂等，重复执行收敛于同一状态，每机构至多改名一个候选。
+- 版本声明、SBOM 与冻结构建元数据同步为 0.9.6。无新增结构迁移；`install.sql`/`uninstall.sql` 与 0.9.5 逐字节一致，`update.sql` 仅追加上述数据收敛语句（`build-lifecycle.php --check` 通过）。
+
 ## 0.9.5（候选，待发布）
 
 - 修复管理端英文原始报错透传到界面提示（ux_p2b P11 严重项 S-2 的 SandIAM 侧）：访问矩阵、`ResourceListPage`、`GoalGuide`、`TaskPath`、应用业务动作页的读取/授权/ensure-defaults 调用补 `showErrorMessage:false`，阻止宿主 toast 直出服务端英文原文；`listSandIamResource`/`disableSandIamResource`/`postSandIamAction`/`readSandIamResource` 增加可选 `showErrorMessage` 参数（默认 `true`，向后兼容既有调用方）。被压制的错误统一改走 `describeSandIamError` 全中文描述并渲染内联错误面（ElAlert/ElMessage），静默路径均有内联错误或 best-effort 语义兜底。
@@ -21,7 +26,7 @@
 ## 0.9.2（候选，待发布）
 
 - 全新安装试用签发 503 修复：`SAND_IAM_CONTEXT_SIGNING_KEY` 原本只由部署侧注入，全新实例无人供给导致 `trial/context` 签发失败。新增 `ContextSigningKeyProvisioner`：首次需要签发上下文时按私有锁串行生成密钥、先备份再以原子写补入宿主 `.env`、进程内即时刷新，签发不再依赖人工预置密钥。
-- S2 默认实体零步化：新增幂等端点 `POST access-matrix/ensure-defaults`，为空实例自动创建默认客户主体、律序应用、prod 环境与 client（不授权、不发证）；SandIAM 首页与 SandAI 首页在检测到实体为空时自动调用一次，新装实例不再要求先手工走 3 步登记才能"设为默认并启用"。
+- S2 默认实体零步化：新增幂等端点 `POST access-matrix/ensure-defaults`，为空实例自动创建默认客户主体、默认应用、prod 环境与 client（不授权、不发证）；SandIAM 首页与 SandAI 首页在检测到实体为空时自动调用一次，新装实例不再要求先手工走 3 步登记才能"设为默认并启用"。
 - 版本声明、SBOM 与冻结构建元数据同步为 0.9.2。无新增数据库迁移；`install.sql`/`update.sql`/`uninstall.sql` 与 0.9.1 逐字节一致（`build-lifecycle.php --check` 通过）。
 
 ## 0.9.1（候选，待发布）

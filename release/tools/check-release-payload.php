@@ -187,7 +187,7 @@ foreach ($payload as $path) {
     if (preg_match('#(?:file://|(?:^|[\s"\'`=:(\[,])/(?:Users|home)/[A-Za-z0-9._-]+(?:/|$)|(?:^|[\s"\'`=:(\[,])/private(?:/|$)|(?<![A-Za-z0-9_])(?:\$HOME|\$\{HOME\}|~)(?:[\\\\/]|$)|(?<![A-Za-z0-9])[A-Za-z]:[\\\\/])#', $source) === 1) $localPathFiles[] = $path;
     if (preg_match('#(?:\.codex/|\.cursor/|docs/development/|candidate/dirty-not-release|autopilot)#i', $source) === 1) $internalPayloadFiles[] = $path;
     if (preg_match('/-----BEGIN [A-Z ]*PRIVATE KEY-----|\bsiam_(?:at|wc|rt)_[A-Za-z0-9_-]{8,}\b/i', $source) === 1) $credentialFiles[] = $path;
-    if (preg_match('/(?:案件|律所|律师|律序|\bmatter\b|\blawyer\b)/iu', $source) === 1) $industryMarkers[] = $path;
+    if (preg_match('/(?:案件|律所|律师|律序|\bmatter\b|\blawyer\b|\blvxu\b|\blvku\b)/iu', $source) === 1) $industryMarkers[] = $path;
 }
 $record('payload has no developer-machine absolute paths', $localPathFiles === [], implode(', ', $localPathFiles));
 $record('payload has no internal task-system references', $internalPayloadFiles === [], implode(', ', $internalPayloadFiles));
