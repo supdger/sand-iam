@@ -29,8 +29,27 @@ $fail = static function (string $message): never {
 };
 
 $admin = new PDO($adminDsn, $adminUser, $adminPass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-$admin->exec('DROP DATABASE IF EXISTS ' . $fixtureDb);
+$admin->exec('DROP DATABASE IF EXISTS ' . $fixtureDb . ' WITH (FORCE)');
 $admin->exec('CREATE DATABASE ' . $fixtureDb);
+
+// Cleanup guard: the scratch database must not survive a failed run (exit() in
+// $fail or an uncaught PDO error). WITH (FORCE) also covers a still-open
+// fixture connection, which otherwise makes DROP DATABASE fail with 55006.
+$fixtureDropped = false;
+$dropFixture = static function () use ($adminDsn, $adminUser, $adminPass, $fixtureDb): void {
+    $pdo = new PDO($adminDsn, $adminUser, $adminPass, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+    $pdo->exec('DROP DATABASE IF EXISTS ' . $fixtureDb . ' WITH (FORCE)');
+};
+register_shutdown_function(static function () use (&$fixtureDropped, $dropFixture): void {
+    if ($fixtureDropped) {
+        return;
+    }
+    try {
+        $dropFixture();
+    } catch (Throwable $e) {
+        fwrite(STDERR, "[WARN] scratch database cleanup failed: {$e->getMessage()}\n");
+    }
+});
 
 $db = new PDO(
     'pgsql:host=127.0.0.1;port=5432;dbname=' . $fixtureDb,
@@ -198,5 +217,10 @@ $exec('TRUNCATE sand_iam_service_grant, sand_iam_workload_client, sand_iam_envir
 $db->exec($renameSql);
 $assert((int) $scalar('SELECT count(*) FROM sand_iam_application') === 0, 'fresh install state: rename is a no-op');
 
-$admin->exec('DROP DATABASE IF EXISTS ' . $fixtureDb);
+// Release the fixture connection — including the references held by the $probe
+// / $scalar / $exec closures — before dropping; WITH (FORCE) is the fallback.
+$db = null;
+unset($probe, $scalar, $exec);
+$dropFixture();
+$fixtureDropped = true;
 echo "ALL FIXTURE ASSERTIONS PASSED; scratch database {$fixtureDb} dropped\n";
