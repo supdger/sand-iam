@@ -27,7 +27,7 @@ final class AccessMatrixController extends BaseController
         return $this->success((new AccessMatrixService())->matrix($this->access()));
     }
 
-    /** Idempotent entity-only provisioning: default organization + 律序 application + prod environment + sand-ai client. Grants stay an explicit decision. */
+    /** Idempotent entity-only provisioning: default organization + default application + prod environment + sand-ai client. Grants stay an explicit decision. */
     #[Permission('SandIAM 默认实体就绪（一键接入前置）', 'sand_iam:grant:save')]
     public function ensureDefaults(Request $request): Response
     {

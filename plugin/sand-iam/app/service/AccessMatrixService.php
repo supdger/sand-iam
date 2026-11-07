@@ -345,7 +345,7 @@ final class AccessMatrixService
      * Idempotent first-use provisioning of the default entity chain so a fresh
      * install can present an actionable home and wizard without a manual
      * registration detour: default organization + default application
-     * (lvxu/律序) + default environment (prod/正式) + the sand-ai workload
+     * (default-app/默认应用) + default environment (prod/正式) + the sand-ai workload
      * client. Creates nothing twice, grants nothing, issues no credential —
      * capability grants stay an explicit admin decision on the same page.
      *
@@ -476,12 +476,63 @@ final class AccessMatrixService
             if ((int) $model->status !== 1) $model->save(['status' => 1]);
             return [$model, false];
         }
+        if ($application['code'] === AccessMatrixInput::DEFAULT_APPLICATION_CODE) {
+            $adopted = $this->adoptProvisionedDefaultApplication($organizationId, (string) $application['name']);
+            if ($adopted !== null) {
+                return [$adopted, false];
+            }
+        }
         return [Application::create([
             'organization_id' => $organizationId,
             'code' => $application['code'],
             'name' => $application['name'],
             'status' => 1,
         ]), true];
+    }
+
+    /**
+     * Upgrade compatibility for installs provisioned before the default
+     * application carried the neutral code. The provisioned chain is
+     * identified structurally — an application in the same organization that
+     * owns the default environment hosting the default workload client with
+     * the default audience — never by a retired literal. Convergence renames
+     * the surviving row in place: ids, environments, clients, grants and
+     * credentials are untouched, so every existing reference keeps working.
+     * Mirrors lifecycle/default-application-rename.pgsql for hosts where the
+     * update lifecycle has not run yet.
+     */
+    private function adoptProvisionedDefaultApplication(int $organizationId, string $name): ?Application
+    {
+        $rows = Db::query(
+            'SELECT candidate.id AS id FROM sand_iam_application candidate'
+            . ' WHERE candidate.organization_id = ? AND candidate.delete_time IS NULL AND candidate.code <> ?'
+            . ' AND EXISTS ('
+            .     'SELECT 1 FROM sand_iam_environment env'
+            .     ' JOIN sand_iam_workload_client client ON client.environment_id = env.id'
+            .     ' WHERE env.application_id = candidate.id AND env.delete_time IS NULL AND env.code = ?'
+            .     ' AND client.delete_time IS NULL AND client.code = ? AND client.audience = ?'
+            . ' ) ORDER BY candidate.id LIMIT 1',
+            [
+                $organizationId,
+                AccessMatrixInput::DEFAULT_APPLICATION_CODE,
+                AccessMatrixInput::DEFAULT_ENVIRONMENT_CODE,
+                AccessMatrixInput::DEFAULT_CLIENT_CODE,
+                AccessMatrixInput::DEFAULT_AUDIENCE,
+            ]
+        );
+        if ($rows === []) {
+            return null;
+        }
+        $model = Application::where('id', (int) $rows[0]['id'])->lock(true)->find();
+        if ($model === null) {
+            return null;
+        }
+        $model->save([
+            'code' => AccessMatrixInput::DEFAULT_APPLICATION_CODE,
+            'name' => $name === '' ? AccessMatrixInput::DEFAULT_APPLICATION_NAME : $name,
+            'status' => 1,
+        ]);
+        return $model;
     }
 
     /** @return array{0:object,1:bool} */
