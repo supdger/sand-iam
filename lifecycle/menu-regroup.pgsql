@@ -42,7 +42,7 @@ WHERE grp."code" = 'SandIAMGroupAccess'
   AND menu."status" = 1
   AND menu."delete_time" IS NULL
   AND menu."code" IN (
-      'SandIAMConnection','SandIAMApplication','SandIAMEnvironment',
+      'SandIAMApplicationCapability','SandIAMApplication','SandIAMEnvironment',
       'SandIAMWorkload','SandIAMCredential','SandIAMGrant',
       'SandIAMApplicationNetworkPolicy'
   );
@@ -73,7 +73,7 @@ WHERE grp."code" = 'SandIAMGroupAdvanced'
   AND menu."status" = 1
   AND menu."delete_time" IS NULL
   AND menu."code" IN (
-      'SandIAMGettingStarted','SandIAMAuditTroubleshooting','SandIAMApiGovernance',
+      'SandIAMConnection','SandIAMGettingStarted','SandIAMAuditTroubleshooting','SandIAMApiGovernance',
       'SandIAMAuthSession','SandIAMEventNotification','SandIAMService',
       'SandIAMServiceAction','SandIAMIdentityProvider','SandIAMResource',
       'SandIAMPolicy','SandIAMAdminScope','SandIAMAdminOrganizationGrant',
@@ -126,3 +126,7 @@ UPDATE "sand_system_menu" SET "name" = 'OAuth 动态注册令牌', "update_time"
 UPDATE "sand_system_menu" SET "name" = 'CAS 单点接入', "update_time" = NOW() WHERE "code" = 'SandIAMCasService';
 UPDATE "sand_system_menu" SET "name" = '自动同步用户（SCIM）', "update_time" = NOW() WHERE "code" = 'SandIAMScimTokens';
 UPDATE "sand_system_menu" SET "name" = '网络设备登录认证（RADIUS）', "update_time" = NOW() WHERE "code" = 'SandIAMRadiusNas';
+-- WP-B1: the seven-step manual connection flow is demoted into 高级 as
+-- 「手动接入」; the two-click 「开通功能」 page (SandIAMApplicationCapability,
+-- seeded hidden by migration 046) takes over application capability grants.
+UPDATE "sand_system_menu" SET "name" = '手动接入', "update_time" = NOW() WHERE "code" = 'SandIAMConnection';

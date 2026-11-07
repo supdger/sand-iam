@@ -90,16 +90,17 @@ $migrations = [
     '043_scope_audit_event_key.pgsql',
     '044_application_capability_directory.pgsql',
     '045_application_capability_permissions.pgsql',
+    '046_application_capability_menu.pgsql',
 ];
 
-// Revision 044/045 belong to the 0.9.7 capability directory release only;
+// Revision 044/045/046 belong to the 0.9.7 capability release only;
 // every earlier profile keeps the published 001-043 ledger boundary.
 if ($profile === '0.9.7') {
     // keep the full manifest
 } elseif (in_array($profile, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) {
-    $migrations = array_slice($migrations, 0, -2);
-} else {
     $migrations = array_slice($migrations, 0, -3);
+} else {
+    $migrations = array_slice($migrations, 0, -4);
 }
 
 /** @return non-empty-string */

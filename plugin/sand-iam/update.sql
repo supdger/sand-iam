@@ -1,4 +1,4 @@
--- SandIAM 0.9.7 standard upgrade: strict43-46 admission, immutable043/044/045 conditional bodies.
+-- SandIAM 0.9.7 standard upgrade: strict43-47 admission, immutable043/044/045/046 conditional bodies.
 -- Catalog input: scratch PostgreSQL capture of the frozen install payload at revision045.
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 DO $sand_iam_upgrade_097$
@@ -293,8 +293,8 @@ BEGIN
     END IF;
 END $$;
 $iam097_migration043$;
-    ELSIF source_rows NOT IN (44, 45, 46) THEN
-        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact published43-46 ledger';
+    ELSIF source_rows NOT IN (44, 45, 46, 47) THEN
+        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact published43-47 ledger';
     END IF;
     IF (SELECT count(*) FROM public.sand_iam_schema_migration) = 44
        AND NOT EXISTS (SELECT 1 FROM public.sand_iam_schema_migration
@@ -562,6 +562,159 @@ BEGIN
 END $$;
 $iam097_migration045$;
     END IF;
+    IF (SELECT count(*) FROM public.sand_iam_schema_migration) = 46
+       AND EXISTS (SELECT 1 FROM public.sand_iam_schema_migration
+           WHERE migration_file = '045_application_capability_permissions.pgsql'
+             AND revision = 45 AND package_version = '0.9.7')
+       AND NOT EXISTS (SELECT 1 FROM public.sand_iam_schema_migration
+           WHERE migration_file = '046_application_capability_menu.pgsql') THEN
+        EXECUTE $iam097_migration046$-- SandIAM 0.9.7 WP-B1: register the hidden 「开通功能」 page menu and reparent
+-- the two capability permission nodes onto it. The page stays invisible in the
+-- sidebar (is_hidden=1) and is reached from the application list row action or
+-- a direct link; lifecycle/menu-regroup.pgsql then places it under the
+-- 应用接入 group and demotes SandIAMConnection into 高级 as 「手动接入」 on
+-- both fresh installs and upgrades. Existing menus, routes, credentials and
+-- disabled states are untouched; every statement converges on rerun.
+
+
+LOCK TABLE sand_system_menu, sand_system_role_menu, sand_iam_schema_migration IN SHARE ROW EXCLUSIVE MODE;
+
+DO $$
+DECLARE
+    recorded record;
+    root_rows integer;
+    root_id bigint;
+    group_id bigint;
+    page_rows integer;
+    page_id bigint;
+BEGIN
+    SELECT revision, checksum, package_version INTO recorded
+    FROM sand_iam_schema_migration
+    WHERE migration_file = '046_application_capability_menu.pgsql';
+    IF recorded.revision IS NOT NULL AND (
+        recorded.revision <> 46
+        OR recorded.checksum <> '5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51'
+        OR recorded.package_version <> '0.9.7'
+    ) THEN
+        RAISE EXCEPTION 'SandIAM migration 046 ledger identity conflicts with capability menu';
+    END IF;
+
+    IF recorded.revision IS NULL THEN
+        IF (SELECT count(*) FROM sand_iam_schema_migration) <> 46
+           OR NOT EXISTS (
+               SELECT 1 FROM sand_iam_schema_migration
+               WHERE migration_file = '045_application_capability_permissions.pgsql'
+                 AND revision = 45
+                 AND checksum = '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6'
+                 AND package_version = '0.9.7'
+           ) THEN
+            RAISE EXCEPTION 'SandIAM migration 046 requires the complete published 001-045 ledger';
+        END IF;
+
+        SELECT count(*), min(id) INTO root_rows, root_id
+        FROM sand_system_menu
+        WHERE code = 'SandIAM'
+          AND delete_time IS NULL;
+        IF root_rows <> 1 THEN
+            RAISE EXCEPTION 'SandIAM migration 046 requires exactly one SandIAM root menu, found %', root_rows;
+        END IF;
+
+        SELECT id INTO group_id
+        FROM sand_system_menu
+        WHERE code = 'SandIAMGroupAccess'
+          AND delete_time IS NULL
+        ORDER BY id
+        LIMIT 1;
+
+        SELECT count(*), min(id) INTO page_rows, page_id
+        FROM sand_system_menu
+        WHERE code = 'SandIAMApplicationCapability'
+          AND delete_time IS NULL;
+        IF page_rows > 1 THEN
+            RAISE EXCEPTION 'SandIAM migration 046 found duplicate SandIAMApplicationCapability menus';
+        END IF;
+        IF page_rows = 0 THEN
+            INSERT INTO sand_system_menu
+                (parent_id, name, code, slug, type, path, component, icon, sort, is_hidden, status, create_time, update_time)
+            VALUES
+                (COALESCE(group_id, root_id), '开通功能', 'SandIAMApplicationCapability', '', 2,
+                 '/sand-iam/application-capability', '/plugin/sand-iam/application-capability/index', '',
+                 90, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            RETURNING id INTO page_id;
+        ELSE
+            UPDATE sand_system_menu
+            SET parent_id = COALESCE(group_id, root_id),
+                name = '开通功能',
+                slug = '',
+                type = 2,
+                path = '/sand-iam/application-capability',
+                component = '/plugin/sand-iam/application-capability/index',
+                icon = '',
+                sort = 90,
+                is_hidden = 1,
+                status = 1,
+                update_time = CURRENT_TIMESTAMP
+            WHERE id = page_id
+              AND (
+                  parent_id IS DISTINCT FROM COALESCE(group_id, root_id)
+                  OR name IS DISTINCT FROM '开通功能'
+                  OR slug IS DISTINCT FROM ''
+                  OR type IS DISTINCT FROM 2
+                  OR path IS DISTINCT FROM '/sand-iam/application-capability'
+                  OR component IS DISTINCT FROM '/plugin/sand-iam/application-capability/index'
+                  OR icon IS DISTINCT FROM ''
+                  OR sort IS DISTINCT FROM 90
+                  OR is_hidden IS DISTINCT FROM 1
+                  OR status IS DISTINCT FROM 1
+              );
+        END IF;
+
+        UPDATE sand_system_menu permission
+        SET parent_id = page_id,
+            update_time = CURRENT_TIMESTAMP
+        WHERE permission.type = 3
+          AND permission.slug IN ('sand_iam:application_capability:index', 'sand_iam:application_capability:save')
+          AND permission.delete_time IS NULL
+          AND permission.parent_id IS DISTINCT FROM page_id;
+
+        INSERT INTO sand_system_role_menu (role_id, menu_id)
+        SELECT DISTINCT holder.role_id, page_id
+        FROM sand_system_role_menu holder
+        JOIN sand_system_menu held
+          ON held.id = holder.menu_id
+         AND held.delete_time IS NULL
+        WHERE (
+            held.slug IN ('sand_iam:application_capability:index', 'sand_iam:application_capability:save')
+            OR held.code = 'SandIAMApplication'
+        )
+        AND NOT EXISTS (
+            SELECT 1 FROM sand_system_role_menu existing
+            WHERE existing.role_id = holder.role_id
+              AND existing.menu_id = page_id
+        );
+    END IF;
+END $$;
+
+WITH self_checksum(checksum) AS (VALUES ('5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51'))
+INSERT INTO sand_iam_schema_migration (migration_file, revision, checksum, package_version, executed_time)
+SELECT '046_application_capability_menu.pgsql', 46, self_checksum.checksum, '0.9.7', CURRENT_TIMESTAMP
+FROM self_checksum
+ON CONFLICT (migration_file) DO NOTHING;
+
+DO $$
+DECLARE recorded_rows integer;
+BEGIN
+    SELECT count(*) INTO recorded_rows
+    FROM sand_iam_schema_migration
+    WHERE migration_file = '046_application_capability_menu.pgsql'
+      AND revision = 46
+      AND package_version = '0.9.7';
+    IF recorded_rows <> 1 OR (SELECT count(*) FROM sand_iam_schema_migration) <> 47 THEN
+        RAISE EXCEPTION 'SandIAM migration 046 did not close the exact 001-046 ledger';
+    END IF;
+END $$;
+$iam097_migration046$;
+    END IF;
     WITH expected(migration_file, revision, checksum, package_version) AS (VALUES
             ('001_iam04_admin_organization_grant.pgsql', 1, 'd214397c680631150f4cc1199d0af27063e968211b13b24a1e857ec9f0ceb5f6', '0.6.0'),
             ('002_identity_provider_scope.pgsql', 2, '92e2623876d251b8720303f573a88931765bc14db6c2f12a983fbb0d0084150a', '0.6.0'),
@@ -608,7 +761,8 @@ $iam097_migration045$;
             ('042_permission_menu_hierarchy.pgsql', 42, '62d79e86170788d40d39b528b604269e439e0d3588c011154c8e12080564fbeb', '0.7.3'),
             ('043_scope_audit_event_key.pgsql', 43, '937a58b5cd1ceb3ada3ae0e0cd2a34166d53db87b60a1c096a5a55dd5c549994', '0.8.0'),
             ('044_application_capability_directory.pgsql', 44, '7e0b920249f8cc92ce7b35993c173b2c0ecc16ac17d3f71e0812bfea64cb59fc', '0.9.7'),
-            ('045_application_capability_permissions.pgsql', 45, '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6', '0.9.7')
+            ('045_application_capability_permissions.pgsql', 45, '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6', '0.9.7'),
+            ('046_application_capability_menu.pgsql', 46, '5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51', '0.9.7')
     ), difference AS (
         SELECT e.migration_file FROM expected e FULL OUTER JOIN public.sand_iam_schema_migration a
           ON a.migration_file = e.migration_file
@@ -616,8 +770,8 @@ $iam097_migration045$;
            OR a.revision IS DISTINCT FROM e.revision OR a.checksum::text IS DISTINCT FROM e.checksum
            OR a.package_version IS DISTINCT FROM e.package_version
     ) SELECT count(*) INTO mismatch_count FROM difference;
-    IF mismatch_count <> 0 OR (SELECT count(*) FROM public.sand_iam_schema_migration) <> 46 THEN
-        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact complete revision045 ledger';
+    IF mismatch_count <> 0 OR (SELECT count(*) FROM public.sand_iam_schema_migration) <> 47 THEN
+        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact complete revision046 ledger';
     END IF;
     SELECT COALESCE(jsonb_agg(to_jsonb(captured)), '[]'::jsonb) INTO actual_catalog
     FROM (SELECT c.relname, c.relkind::text, c.relpersistence::text, c.relrowsecurity, c.relforcerowsecurity,
@@ -718,7 +872,7 @@ WHERE grp."code" = 'SandIAMGroupAccess'
   AND menu."status" = 1
   AND menu."delete_time" IS NULL
   AND menu."code" IN (
-      'SandIAMConnection','SandIAMApplication','SandIAMEnvironment',
+      'SandIAMApplicationCapability','SandIAMApplication','SandIAMEnvironment',
       'SandIAMWorkload','SandIAMCredential','SandIAMGrant',
       'SandIAMApplicationNetworkPolicy'
   );
@@ -749,7 +903,7 @@ WHERE grp."code" = 'SandIAMGroupAdvanced'
   AND menu."status" = 1
   AND menu."delete_time" IS NULL
   AND menu."code" IN (
-      'SandIAMGettingStarted','SandIAMAuditTroubleshooting','SandIAMApiGovernance',
+      'SandIAMConnection','SandIAMGettingStarted','SandIAMAuditTroubleshooting','SandIAMApiGovernance',
       'SandIAMAuthSession','SandIAMEventNotification','SandIAMService',
       'SandIAMServiceAction','SandIAMIdentityProvider','SandIAMResource',
       'SandIAMPolicy','SandIAMAdminScope','SandIAMAdminOrganizationGrant',
@@ -802,6 +956,10 @@ UPDATE "sand_system_menu" SET "name" = 'OAuth 动态注册令牌', "update_time"
 UPDATE "sand_system_menu" SET "name" = 'CAS 单点接入', "update_time" = NOW() WHERE "code" = 'SandIAMCasService';
 UPDATE "sand_system_menu" SET "name" = '自动同步用户（SCIM）', "update_time" = NOW() WHERE "code" = 'SandIAMScimTokens';
 UPDATE "sand_system_menu" SET "name" = '网络设备登录认证（RADIUS）', "update_time" = NOW() WHERE "code" = 'SandIAMRadiusNas';
+-- WP-B1: the seven-step manual connection flow is demoted into 高级 as
+-- 「手动接入」; the two-click 「开通功能」 page (SandIAMApplicationCapability,
+-- seeded hidden by migration 046) takes over application capability grants.
+UPDATE "sand_system_menu" SET "name" = '手动接入', "update_time" = NOW() WHERE "code" = 'SandIAMConnection';
 $iam097_menu_regroup$;
     EXECUTE $iam097_default_app$-- SandIAM default application neutralization (0.9.6).
 -- Releases before 0.9.6 auto-provisioned the first-use default application

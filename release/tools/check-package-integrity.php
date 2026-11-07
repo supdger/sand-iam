@@ -265,7 +265,7 @@ if (is_string($builderSource)
 }
 preg_match_all("/^\\s*'([0-9]{3}_[^']+\\.pgsql)',$/m", $updateSource, $updateMatches);
 $updateMigrationNames = $currentVersion === '0.9.7'
-    ? ['043_scope_audit_event_key.pgsql', '044_application_capability_directory.pgsql', '045_application_capability_permissions.pgsql']
+    ? ['043_scope_audit_event_key.pgsql', '044_application_capability_directory.pgsql', '045_application_capability_permissions.pgsql', '046_application_capability_menu.pgsql']
     : (in_array($currentVersion, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)
         ? ['043_scope_audit_event_key.pgsql']
         : ($currentVersion === '0.7.6' ? [] : ($updateMatches[1] ?? [])));
@@ -389,7 +389,7 @@ $assert('generated lifecycle separates full install from guarded versioned updat
         if ($currentVersion === '0.9.7') {
             require_once $root . '/release/tools/build-upgrade-097.php';
             if ($update !== sandIamBuild097Update($root)) {
-                throw new RuntimeException('0.9.7 update differs from strict43-46 admission and immutable043/044/045 conditional bodies');
+                throw new RuntimeException('0.9.7 update differs from strict43-47 admission and immutable043/044/045/046 conditional bodies');
             }
         } elseif (in_array($currentVersion, ['0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) {
             require_once $root . '/release/tools/build-upgrade-082.php';
@@ -582,7 +582,7 @@ $assert('migration ledger catalogs the published baseline and versioned migratio
         return false;
     }
     foreach ($manifestMigrationNames as $name) {
-        if (in_array($name, ['039_service_grant_nullable_data_class.pgsql', '040_passkey_auth_challenge_identity.pgsql', '041_authorization_scope_integrity.pgsql', '042_permission_menu_hierarchy.pgsql', '043_scope_audit_event_key.pgsql', '044_application_capability_directory.pgsql', '045_application_capability_permissions.pgsql'], true)) {
+        if (in_array($name, ['039_service_grant_nullable_data_class.pgsql', '040_passkey_auth_challenge_identity.pgsql', '041_authorization_scope_integrity.pgsql', '042_permission_menu_hierarchy.pgsql', '043_scope_audit_event_key.pgsql', '044_application_capability_directory.pgsql', '045_application_capability_permissions.pgsql', '046_application_capability_menu.pgsql'], true)) {
             continue;
         }
         if (!str_contains($ledger, "'{$name}'")) {
@@ -675,6 +675,15 @@ $assert('migration ledger catalogs the published baseline and versioned migratio
             || !str_contains($permissions, "SELECT '045_application_capability_permissions.pgsql', 45")
             || !str_contains($permissions, '(SELECT count(*) FROM sand_iam_schema_migration) <> 46')
             || !str_contains($permissions, 'sand_iam:application_capability:save')) return false;
+    }
+    if (in_array('046_application_capability_menu.pgsql', $manifestMigrationNames, true)) {
+        $menu = (string) file_get_contents($root . '/migrations/046_application_capability_menu.pgsql');
+        if (preg_match("/WITH self_checksum\\(checksum\\) AS \\(VALUES \\('([0-9a-f]{64})'\\)\\)/", $menu, $menuChecksum) !== 1
+            || hash('sha256', str_replace($menuChecksum[1], '__SELF_SHA256__', $menu)) !== $menuChecksum[1]
+            || !str_contains($menu, "SELECT '046_application_capability_menu.pgsql', 46")
+            || !str_contains($menu, '(SELECT count(*) FROM sand_iam_schema_migration) <> 47')
+            || !str_contains($menu, 'SandIAMApplicationCapability')
+            || !str_contains($menu, '/sand-iam/application-capability')) return false;
     }
     return str_contains($ledger, 'migration ledger checksum or package-version conflict; refusing to continue')
         && str_contains($ledger, 'exact legacy or ledger-backed relation fingerprint is incompatible')

@@ -46,12 +46,14 @@ function sandIamBuild097Update(string $root): string
     $migration043 = file_get_contents($root . '/migrations/043_scope_audit_event_key.pgsql');
     $migration044 = file_get_contents($root . '/migrations/044_application_capability_directory.pgsql');
     $migration045 = file_get_contents($root . '/migrations/045_application_capability_permissions.pgsql');
-    if (!is_string($oldAdmission) || !is_string($migration043) || !is_string($migration044) || !is_string($migration045)
+    $migration046 = file_get_contents($root . '/migrations/046_application_capability_menu.pgsql');
+    if (!is_string($oldAdmission) || !is_string($migration043) || !is_string($migration044) || !is_string($migration045) || !is_string($migration046)
         || hash('sha256', $oldAdmission) !== '4c4e867f013f33571129ea0ad62a00952e4a75fd4177ef68caf8fdb997e2c3f2'
         || hash('sha256', $migration043) !== '25b37adbb3cf28aebaf997fd25322b6c4798a6ce734d59d81896d32f0174be12'
         || hash('sha256', $migration044) !== '1f9754bb41468dc2a513b173bb3dd15fd73e3f3ceb7c493a09e6c4bcfbbe8913'
-        || hash('sha256', $migration045) !== 'd37ab6f53729cec302c841795d01a4a16b6166d4476449108c76174c9abc8c5f') {
-        throw new RuntimeException('0.9.7 requires the original immutable revision043-045 sources');
+        || hash('sha256', $migration045) !== 'd37ab6f53729cec302c841795d01a4a16b6166d4476449108c76174c9abc8c5f'
+        || hash('sha256', $migration046) !== '3b70480fddbc9b24e6cef60f48b3b9158e8510494d02e9e9fc870b53233c6884') {
+        throw new RuntimeException('0.9.7 requires the original immutable revision043-046 sources');
     }
     $admissionStart = strpos($oldAdmission, 'DO $$');
     $admissionEnd = strrpos($oldAdmission, 'END $$;');
@@ -71,7 +73,8 @@ function sandIamBuild097Update(string $root): string
     if (count($rows[0]) !== 43) throw new RuntimeException('Published43 ledger cannot be reused exactly');
     $values .= ",\n            ('043_scope_audit_event_key.pgsql', 43, '937a58b5cd1ceb3ada3ae0e0cd2a34166d53db87b60a1c096a5a55dd5c549994', '0.8.0')"
         . ",\n            ('044_application_capability_directory.pgsql', 44, '7e0b920249f8cc92ce7b35993c173b2c0ecc16ac17d3f71e0812bfea64cb59fc', '0.9.7')"
-        . ",\n            ('045_application_capability_permissions.pgsql', 45, '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6', '0.9.7')";
+        . ",\n            ('045_application_capability_permissions.pgsql', 45, '3fbb764237de7a3d2380fe17c82fa197680e50848765d8f5be81969157c5aff6', '0.9.7')"
+        . ",\n            ('046_application_capability_menu.pgsql', 46, '5c9f95af06b97ad399f4e2431bd82751810316b69cbdfd9390a165892fd08f51', '0.9.7')";
 
     // Query columns and ordering are copied exactly from the captured public
     // provider used for the revision043 capture.
@@ -125,9 +128,10 @@ function sandIamBuild097Update(string $root): string
     $migration043Body = withoutOuterTransaction($migration043, '043_scope_audit_event_key.pgsql');
     $migration044Body = withoutOuterTransaction($migration044, '044_application_capability_directory.pgsql');
     $migration045Body = withoutOuterTransaction($migration045, '045_application_capability_permissions.pgsql');
+    $migration046Body = withoutOuterTransaction($migration046, '046_application_capability_menu.pgsql');
     $menuRegroup = file_get_contents($root . '/lifecycle/menu-regroup.pgsql');
     if (!is_string($menuRegroup)
-        || hash('sha256', $menuRegroup) !== '82293799a56ec1cf30092f8cf1b440f2d47f88560cff4ae3a1c9014a0670302f'
+        || hash('sha256', $menuRegroup) !== '647efa692b729423ff921464291300d5bd71b3b2a0d6aa53da890c206f92a283'
         || str_contains($menuRegroup, '$iam097_menu_regroup$')) {
         throw new RuntimeException('Menu regroup lifecycle source differs from the exact reviewed input');
     }
@@ -135,8 +139,8 @@ function sandIamBuild097Update(string $root): string
     if (!is_string($defaultAppRename) || trim($defaultAppRename) === '') {
         throw new RuntimeException('Default application neutralization lifecycle source is unreadable');
     }
-    foreach (['$iam097_prior$', '$iam097_migration043$', '$iam097_migration044$', '$iam097_migration045$', '$iam097_menu_regroup$', '$iam097_default_app$'] as $tag) {
-        if (str_contains($oldAdmissionBody . $migration043Body . $migration044Body . $migration045Body . $menuRegroup . $defaultAppRename, $tag)) {
+    foreach (['$iam097_prior$', '$iam097_migration043$', '$iam097_migration044$', '$iam097_migration045$', '$iam097_migration046$', '$iam097_menu_regroup$', '$iam097_default_app$'] as $tag) {
+        if (str_contains($oldAdmissionBody . $migration043Body . $migration044Body . $migration045Body . $migration046Body . $menuRegroup . $defaultAppRename, $tag)) {
             throw new RuntimeException('Migration dollar-quote collision');
         }
     }
@@ -169,8 +173,8 @@ SQL;
         . "        END IF;\n"
         . "        EXECUTE \$iam097_prior\${$oldAdmissionBody}\$iam097_prior\$;\n"
         . "        EXECUTE \$iam097_migration043\${$migration043Body}\$iam097_migration043\$;\n"
-        . "    ELSIF source_rows NOT IN (44, 45, 46) THEN\n"
-        . "        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact published43-46 ledger';\n"
+        . "    ELSIF source_rows NOT IN (44, 45, 46, 47) THEN\n"
+        . "        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact published43-47 ledger';\n"
         . "    END IF;\n"
         . "    IF (SELECT count(*) FROM public.sand_iam_schema_migration) = 44\n"
         . "       AND NOT EXISTS (SELECT 1 FROM public.sand_iam_schema_migration\n"
@@ -185,6 +189,14 @@ SQL;
         . "           WHERE migration_file = '045_application_capability_permissions.pgsql') THEN\n"
         . "        EXECUTE \$iam097_migration045\${$migration045Body}\$iam097_migration045\$;\n"
         . "    END IF;\n"
+        . "    IF (SELECT count(*) FROM public.sand_iam_schema_migration) = 46\n"
+        . "       AND EXISTS (SELECT 1 FROM public.sand_iam_schema_migration\n"
+        . "           WHERE migration_file = '045_application_capability_permissions.pgsql'\n"
+        . "             AND revision = 45 AND package_version = '0.9.7')\n"
+        . "       AND NOT EXISTS (SELECT 1 FROM public.sand_iam_schema_migration\n"
+        . "           WHERE migration_file = '046_application_capability_menu.pgsql') THEN\n"
+        . "        EXECUTE \$iam097_migration046\${$migration046Body}\$iam097_migration046\$;\n"
+        . "    END IF;\n"
         . "    WITH expected(migration_file, revision, checksum, package_version) AS (VALUES\n"
         . $values . "\n"
         . "    ), difference AS (\n"
@@ -194,8 +206,8 @@ SQL;
         . "           OR a.revision IS DISTINCT FROM e.revision OR a.checksum::text IS DISTINCT FROM e.checksum\n"
         . "           OR a.package_version IS DISTINCT FROM e.package_version\n"
         . "    ) SELECT count(*) INTO mismatch_count FROM difference;\n"
-        . "    IF mismatch_count <> 0 OR (SELECT count(*) FROM public.sand_iam_schema_migration) <> 46 THEN\n"
-        . "        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact complete revision045 ledger';\n"
+        . "    IF mismatch_count <> 0 OR (SELECT count(*) FROM public.sand_iam_schema_migration) <> 47 THEN\n"
+        . "        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact complete revision046 ledger';\n"
         . "    END IF;\n"
         . $catalogChecks
         . "    EXECUTE \$iam097_menu_regroup\$"
@@ -206,7 +218,7 @@ SQL;
         . "\$iam097_default_app\$;\n"
         . "END \$sand_iam_upgrade_097\$;\n";
 
-    return "-- SandIAM 0.9.7 standard upgrade: strict43-46 admission, immutable043/044/045 conditional bodies.\n"
+    return "-- SandIAM 0.9.7 standard upgrade: strict43-47 admission, immutable043/044/045/046 conditional bodies.\n"
         . "-- Catalog input: scratch PostgreSQL capture of the frozen install payload at revision045.\n"
         . "BEGIN ISOLATION LEVEL REPEATABLE READ;\n" . $upgrade . "\nCOMMIT;\n";
 }
