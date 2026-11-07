@@ -77,13 +77,15 @@ final class ApplicationCapabilityService
             throw new ApiException('SAND_IAM_CAPABILITY_IDEMPOTENCY_KEY_INVALID: 缺少或非法的 Idempotency-Key 请求头', 400);
         }
         [$application, $organization] = $this->requireApplication($applicationId, $access);
+        $actorRef = $adminId . ':' . (int) $organization->id . ':' . (int) $application->id;
+        $receiptId = 'cap_' . substr(hash('sha256', 'sand-iam-capability:' . $idempotencyKey), 0, 56);
         if (!$canSave()) {
+            // Pre-transaction denial: the audit row commits in autocommit, so
+            // it survives even though the request never reaches the lock.
+            $this->auditDeniedAttempt('SAND_IAM_CAPABILITY_PERMISSION_DENIED', 'application_capability.save', $adminId, (int) $organization->id, (int) $application->id, $requestId, $receiptId . '.permission');
             throw new ApiException('SAND_IAM_CAPABILITY_PERMISSION_DENIED: 当前账号没有管理应用功能授权的权限', 403);
         }
         [$desiredIds, $expectedRevision] = $this->normalizeInput($input);
-
-        $actorRef = $adminId . ':' . (int) $organization->id . ':' . (int) $application->id;
-        $receiptId = 'cap_' . substr(hash('sha256', 'sand-iam-capability:' . $idempotencyKey), 0, 56);
         // Contract fingerprint: normalized capability ids + expected revision +
         // directory/policy version. Catalog content is deliberately excluded so
         // a metadata refresh cannot turn a legitimate replay into a conflict.
@@ -119,6 +121,11 @@ final class ApplicationCapabilityService
             Db::commit();
             return ['result' => $this->stripReplayKeys($result['result']), 'replayed' => $result['replayed']];
         } catch (ApiException $exception) {
+            // beginSerializableTransaction() runs before this try, so a
+            // configuration failure never reaches this catch; Db::rollback()
+            // is additionally a guarded no-op without an active transaction
+            // (think-orm floors the transaction counter and checks
+            // inTransaction()), keeping the commit-failure path safe.
             Db::rollback();
             $completedReplay = $operations->waitForCompletedReplay('admin', $actorRef, self::OPERATION, $receiptId, $fingerprint, 20);
             if ($completedReplay !== null) {
@@ -128,6 +135,10 @@ final class ApplicationCapabilityService
                 $replay = $operations->replay('admin', $actorRef, self::OPERATION, $receiptId, $fingerprint);
                 return ['result' => $this->stripReplayKeys($replay['result']), 'replayed' => $replay['replayed']];
             }
+            // Denials raised inside the write lock rolled back with the
+            // business transaction, so their audit is written here — after
+            // rollback and only when no completed replay claimed the request.
+            $this->auditLockedDenial($exception, $adminId, (int) $organization->id, (int) $application->id, $requestId, $receiptId);
             throw $exception;
         } catch (\Throwable $exception) {
             Db::rollback();
@@ -197,6 +208,7 @@ final class ApplicationCapabilityService
         $items = [];
         $changed = 0;
         $failed = 0;
+        $failedIds = [];
         $bindingConflict = $binding['conflict'];
         // Deterministic processing order keeps multi-service audience claims stable.
         usort($catalog, static fn (array $a, array $b): int => $a['action_id'] <=> $b['action_id']);
@@ -207,6 +219,7 @@ final class ApplicationCapabilityService
             if ($bindingConflict !== null) {
                 $items[] = $this->itemResult($item, $desired ? 'grant' : 'revoke', false, $bindingConflict);
                 $failed++;
+                $failedIds[] = $id;
                 continue;
             }
             if ($desired === $current) {
@@ -222,6 +235,7 @@ final class ApplicationCapabilityService
                 $items[] = $this->itemResult($item, $operation, true, '');
             } else {
                 $failed++;
+                $failedIds[] = $id;
                 $items[] = $this->itemResult($item, $operation, false, $outcome['message']);
             }
         }
@@ -243,9 +257,11 @@ final class ApplicationCapabilityService
         $writer = new AuditWriter();
         $writer->write('admin', (string) $adminId, $organizationId, $appId, 'application_capability.save', 'application', $appId, $failed === 0 ? 'succeeded' : 'failed', $this->childRequestId($requestId, 'summary'), [
             'status' => $status,
+            'revision' => $postSnapshot['revision'],
             'desired_count' => count($submitted),
             'changed_count' => $changed,
             'failed_count' => $failed,
+            'failed_ids' => $failedIds,
             'granted_count' => $grantedCount,
         ]);
         return [
@@ -731,6 +747,52 @@ final class ApplicationCapabilityService
     private function childRequestId(string $requestId, string $operation): string
     {
         return 'capx_' . substr(hash('sha256', $requestId . "\0" . $operation), 0, 48);
+    }
+
+    /**
+     * Maps an ApiException raised inside the write lock to its denied audit.
+     * Only scope re-checks (SAND_IAM_APPLICATION_ACCESS_DENIED) and the
+     * in-lock permission probe (SAND_IAM_CAPABILITY_PERMISSION_DENIED) reach
+     * this point without an audit row; every other failure keeps its existing
+     * semantics. The scope denial mirrors AdminOrganizationAccess::
+     * assertApplication's 'application.access'/'denied' audit shape.
+     */
+    private function auditLockedDenial(ApiException $exception, int $adminId, int $organizationId, int $applicationId, string $requestId, string $receiptId): void
+    {
+        $message = $exception->getMessage();
+        if (str_starts_with($message, 'SAND_IAM_APPLICATION_ACCESS_DENIED')) {
+            $this->auditDeniedAttempt('SAND_IAM_APPLICATION_ACCESS_DENIED', 'application.access', $adminId, $organizationId, $applicationId, $requestId, $receiptId . '.scope');
+        } elseif (str_starts_with($message, 'SAND_IAM_CAPABILITY_PERMISSION_DENIED')) {
+            $this->auditDeniedAttempt('SAND_IAM_CAPABILITY_PERMISSION_DENIED', 'application_capability.save', $adminId, $organizationId, $applicationId, $requestId, $receiptId . '.permission');
+        }
+    }
+
+    /**
+     * Writes one denied audit row outside any business transaction. The
+     * request id derives from the client request id, the idempotency receipt
+     * scope, and a per-attempt nonce: a retried denial under the same
+     * X-Request-Id and Idempotency-Key must not collide on the audit
+     * (request_id, action) uniqueness key and mask the denial with a 500.
+     */
+    private function auditDeniedAttempt(string $code, string $action, int $adminId, int $organizationId, int $applicationId, string $requestId, string $scope): void
+    {
+        (new AuditWriter())->write(
+            'admin',
+            (string) $adminId,
+            $organizationId,
+            $applicationId,
+            $action,
+            'application',
+            $applicationId,
+            'denied',
+            $this->deniedRequestId($requestId, $scope),
+            ['code' => $code],
+        );
+    }
+
+    private function deniedRequestId(string $requestId, string $scope): string
+    {
+        return 'capx_' . substr(hash('sha256', $requestId . "\0" . $scope . "\0" . bin2hex(random_bytes(8))), 0, 48);
     }
 
     private function beginSerializableTransaction(): string

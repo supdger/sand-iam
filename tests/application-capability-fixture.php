@@ -385,6 +385,11 @@ foreach ($save6['result']['items'] as $row) { if ($row['id'] === (string) $docId
 // must surface a per-item conflict instead of reviving it silently.
 $assert($docOp !== null && $docOp['ok'] === false, 'admin-disabled grant reports per-item failure');
 $assert((int) $scalar('SELECT status FROM sand_iam_service_grant WHERE service_action_id=?', [$docId]) === 2, 'disabled grant row is not revived');
+// Summary audit context (audit B6): post-write revision + failed capability ids.
+$summaryCtxRaw = $scalar("SELECT context::text FROM sand_iam_audit_log WHERE action='application_capability.save' ORDER BY id DESC LIMIT 1");
+$summaryCtx = is_string($summaryCtxRaw) ? json_decode($summaryCtxRaw, true) : null;
+$assert(is_array($summaryCtx) && is_string($summaryCtx['revision'] ?? null) && str_starts_with((string) $summaryCtx['revision'], 'cr1_'), 'summary audit context carries the post-write revision');
+$assert(is_array($summaryCtx) && in_array((string) $docId, $summaryCtx['failed_ids'] ?? [], true), 'summary audit context lists the failed capability ids');
 $exec("UPDATE sand_iam_service_grant SET status=1, revoked_time=NULL WHERE service_action_id=?", [$docId]);
 
 // --- 8. No plaintext credential material anywhere ------------------------------
@@ -436,6 +441,44 @@ $assert((int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='app
 // --- 10. Audit request correlation ----------------------------------------------
 $auditRows = (int) $scalar("SELECT count(DISTINCT request_id) FROM sand_iam_audit_log WHERE action='application_capability.save'");
 $assert($auditRows >= 5, 'each save carries its own correlated request id');
+
+// --- 11. Denied attempts leave audit rows (audit B6) ----------------------------
+// Outside-lock permission probe failure: rejected before the transaction and
+// audited in autocommit.
+$catDeny = $service->catalog($appId, $access, $canSave);
+$auditDenyBefore = (int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save' AND outcome='denied'");
+$denyOutside = false;
+try {
+    $service->save($appId, ['capability_ids' => [], 'expected_revision' => $catDeny['revision']], 'deny-key-outside', 1, $reqId(), $access, static fn (): bool => false);
+} catch (ApiException $e) { $denyOutside = $e->getCode() === 403; }
+$assert($denyOutside, 'save without the capability permission is rejected with 403');
+$assert((int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save' AND outcome='denied'") === $auditDenyBefore + 1, 'outside-lock permission denial writes one denied audit');
+$denyCtxRaw = $scalar("SELECT context::text FROM sand_iam_audit_log WHERE action='application_capability.save' AND outcome='denied' ORDER BY id DESC LIMIT 1");
+$denyCtx = is_string($denyCtxRaw) ? json_decode($denyCtxRaw, true) : null;
+$assert(is_array($denyCtx) && ($denyCtx['code'] ?? '') === 'SAND_IAM_CAPABILITY_PERMISSION_DENIED', 'denied audit context carries the denial code');
+// A retried identical denial must not collide on the audit uniqueness key.
+$denyRetry = false;
+try {
+    $service->save($appId, ['capability_ids' => [], 'expected_revision' => $catDeny['revision']], 'deny-key-outside', 1, $reqId(), $access, static fn (): bool => false);
+} catch (ApiException $e) { $denyRetry = $e->getCode() === 403; }
+$assert($denyRetry, 'retried denial still returns 403, never a uniqueness 500');
+$assert((int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save' AND outcome='denied'") === $auditDenyBefore + 2, 'each denied attempt writes its own audit row');
+
+// In-lock permission re-check: passes the fast path outside the lock, fails
+// inside it; the audit survives rollback because it is written after
+// Db::rollback() in the catch path.
+$catDeny2 = $service->catalog($appId, $access, $canSave);
+$denyProbeCalls = 0;
+$flakyCanSave = static function () use (&$denyProbeCalls): bool {
+    $denyProbeCalls++;
+    return $denyProbeCalls === 1;
+};
+$denyInside = false;
+try {
+    $service->save($appId, ['capability_ids' => [], 'expected_revision' => $catDeny2['revision']], 'deny-key-inside', 1, $reqId(), $access, $flakyCanSave);
+} catch (ApiException $e) { $denyInside = $e->getCode() === 403; }
+$assert($denyInside, 'in-lock permission re-check rejects with 403');
+$assert((int) $scalar("SELECT count(*) FROM sand_iam_audit_log WHERE action='application_capability.save' AND outcome='denied'") === $auditDenyBefore + 3, 'in-lock denial audit persists after rollback');
 
 $db = null;
 unset($service, $access, $scalar, $exec, $seedAction, $reqId, $canSave);
