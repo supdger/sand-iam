@@ -207,7 +207,7 @@ SQL;
         . "           OR a.package_version IS DISTINCT FROM e.package_version\n"
         . "    ) SELECT count(*) INTO mismatch_count FROM difference;\n"
         . "    IF mismatch_count <> 0 OR (SELECT count(*) FROM public.sand_iam_schema_migration) <> 47 THEN\n"
-        . "        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact complete revision046 ledger';\n"
+        . "        RAISE EXCEPTION 'SandIAM 0.9.7 requires the exact complete 47-row ledger through revision046';\n"
         . "    END IF;\n"
         . $catalogChecks
         . "    EXECUTE \$iam097_menu_regroup\$"
