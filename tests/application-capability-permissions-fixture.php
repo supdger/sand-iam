@@ -112,10 +112,15 @@ $stmt->execute(['044_application_capability_directory.pgsql', 44, str_repeat('a'
 $assert((int) $scalar('SELECT count(*) FROM sand_iam_schema_migration') === 45, 'seeded 001-044 migration ledger');
 
 // --- Seed: menu tree ---------------------------------------------------------
-// SandIAM root -> SandIAMConnection page (exactly one active candidate).
+// SandIAM root -> navigation group -> SandIAMConnection page (exactly one
+// active candidate). Upgraded 0.9.x installations already carry the grouped
+// menu tree when revision045 runs, so the fixture seeds that shape: the
+// migration must resolve the connection page by row, not by parentage.
 $exec("INSERT INTO sand_system_menu (parent_id, name, code, slug, type, path, component, sort, is_hidden, status) VALUES (0, 'SandIAM', 'SandIAM', '', 1, '', '', 10, 0, 1)");
 $rootId = (int) $scalar("SELECT id FROM sand_system_menu WHERE code='SandIAM'");
-$exec("INSERT INTO sand_system_menu (parent_id, name, code, slug, type, path, component, sort, is_hidden, status) VALUES (?, 'SandIAM 接入', 'SandIAMConnection', '', 2, '/sand-iam', 'sand-iam', 20, 0, 1)", [$rootId]);
+$exec("INSERT INTO sand_system_menu (parent_id, name, code, slug, type, path, component, sort, is_hidden, status) VALUES (?, '应用接入', 'SandIAMGroupAccess', '', 2, 'access', '', 97, 0, 1)", [$rootId]);
+$groupId = (int) $scalar("SELECT id FROM sand_system_menu WHERE code='SandIAMGroupAccess'");
+$exec("INSERT INTO sand_system_menu (parent_id, name, code, slug, type, path, component, sort, is_hidden, status) VALUES (?, 'SandIAM 接入', 'SandIAMConnection', '', 2, '/sand-iam', 'sand-iam', 20, 0, 1)", [$groupId]);
 $connId = (int) $scalar("SELECT id FROM sand_system_menu WHERE code='SandIAMConnection'");
 
 // Existing permission nodes roles may already hold (type 3).

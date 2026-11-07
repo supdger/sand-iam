@@ -11,7 +11,9 @@ require_once __DIR__ . '/lifecycle-sql.php';
  * the immutable 043/044/045 migration bodies, then binds the post-revision045
  * sand_iam catalog capture. The catalog fixture is generated from a scratch
  * PostgreSQL database running the frozen install payload; tools/ never ships
- * in runtime ZIPs.
+ * in runtime ZIPs. Deparsed-text catalog fields are compared after the shared
+ * version-noise normalization so catalogs written by older PostgreSQL parsers
+ * still match the reviewed capture.
  */
 function sandIam097CatalogSha256(): string
 {
@@ -22,6 +24,57 @@ function sandIam097CatalogSha256(): string
 function sandIam097CatalogCounts(): array
 {
     return ['relations' => 259, 'columns' => 1524, 'constraints' => 1437, 'indexes' => 310, 'triggers' => 0, 'policies' => 0];
+}
+
+/**
+ * Catalog text fields whose pg_get_*def/pg_get_expr rendering is normalized
+ * before the strict jsonb comparison. Every other captured column stays
+ * byte-exact.
+ *
+ * @return array<string,list<string>>
+ */
+function sandIam097CatalogTextFields(): array
+{
+    return [
+        'relations' => ['view_definition'],
+        'columns' => ['default_expression'],
+        'constraints' => ['definition'],
+        'indexes' => ['definition'],
+        'triggers' => ['definition'],
+        'policies' => ['using_expression', 'check_expression'],
+    ];
+}
+
+/**
+ * Version-noise normalization shared by the fixture embed and the runtime
+ * capture query. pg_get_constraintdef/pg_get_indexdef/pg_get_expr deparse the
+ * stored expression tree, and trees written by older PostgreSQL parsers carry
+ * cosmetic differences that are semantically identical: per-element
+ * ::character varying::text casts versus an ARRAY[...]::text[] suffix,
+ * parenthesized cast elements, and whitespace/parenthesization choices.
+ * Stripping the ::text-family casts plus all parentheses and whitespace
+ * yields the same skeleton on every supported server (the same aggressive
+ * reduction migration 043 already applies to its own fingerprint check).
+ * Real drift still differs: identifiers, literals, operators, remaining
+ * casts (::bigint/::jsonb/::regclass/::character varying) and row counts are
+ * all still compared exactly.
+ */
+function sandIam097CatalogNormalizeText(string $value): string
+{
+    $value = str_replace('::text[]', '', $value);
+    $value = str_replace('::text', '', $value);
+    $normalized = preg_replace('/[()[:space:]]/', '', $value);
+    if (!is_string($normalized)) {
+        throw new RuntimeException('0.9.7 catalog text normalization failed');
+    }
+
+    return $normalized;
+}
+
+/** SQL expression form of sandIam097CatalogNormalizeText(); keep both in sync. */
+function sandIam097CatalogNormalizeSql(string $expression): string
+{
+    return "regexp_replace(replace(replace({$expression}, '::text[]', ''), '::text', ''), '[()[:space:]]', '', 'g')";
 }
 
 function sandIamBuild097Update(string $root): string
@@ -42,6 +95,27 @@ function sandIamBuild097Update(string $root): string
         || array_map('count', $catalog) !== sandIam097CatalogCounts())) {
         throw new RuntimeException('0.9.7 reviewed catalog groups are incomplete');
     }
+    if (is_array($catalog)) {
+        // The committed fixture stays the raw reviewed capture; only the
+        // embedded expectation is normalized, exactly like the runtime
+        // capture query below, so both sides compare version-noise-free.
+        $textFields = sandIam097CatalogTextFields();
+        foreach ($catalog as $group => $rows) {
+            if (!is_array($rows)) {
+                continue;
+            }
+            foreach ($rows as $rowIndex => $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                foreach ($textFields[$group] ?? [] as $field) {
+                    if (isset($row[$field]) && is_string($row[$field])) {
+                        $catalog[$group][$rowIndex][$field] = sandIam097CatalogNormalizeText($row[$field]);
+                    }
+                }
+            }
+        }
+    }
     $oldAdmission = file_get_contents($root . '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql');
     $migration043 = file_get_contents($root . '/migrations/043_scope_audit_event_key.pgsql');
     $migration044 = file_get_contents($root . '/migrations/044_application_capability_directory.pgsql');
@@ -51,8 +125,8 @@ function sandIamBuild097Update(string $root): string
         || hash('sha256', $oldAdmission) !== '4c4e867f013f33571129ea0ad62a00952e4a75fd4177ef68caf8fdb997e2c3f2'
         || hash('sha256', $migration043) !== '25b37adbb3cf28aebaf997fd25322b6c4798a6ce734d59d81896d32f0174be12'
         || hash('sha256', $migration044) !== '1f9754bb41468dc2a513b173bb3dd15fd73e3f3ceb7c493a09e6c4bcfbbe8913'
-        || hash('sha256', $migration045) !== '158703a990e48bab0caa8522e0b5fc10262b6faece5635a7c765b7ecfa109214'
-        || hash('sha256', $migration046) !== 'a56075fc73f7d24368a516fafa11f0e6676ed86be2d3c7ebff3bb649bf18c4ff') {
+        || hash('sha256', $migration045) !== 'ab6dd93fe234b6b7882d9822b0a1307f79e27b33bfc0eeb9bf8c2834237d013f'
+        || hash('sha256', $migration046) !== '71f27e432f2ff905cc736c6a2f7a1b278b0e93e579deed450bfaf969416c541f') {
         throw new RuntimeException('0.9.7 requires the original immutable revision043-046 sources');
     }
     $admissionStart = strpos($oldAdmission, 'DO $$');
@@ -73,41 +147,43 @@ function sandIamBuild097Update(string $root): string
     if (count($rows[0]) !== 43) throw new RuntimeException('Published43 ledger cannot be reused exactly');
     $values .= ",\n            ('043_scope_audit_event_key.pgsql', 43, '937a58b5cd1ceb3ada3ae0e0cd2a34166d53db87b60a1c096a5a55dd5c549994', '0.8.0')"
         . ",\n            ('044_application_capability_directory.pgsql', 44, '7e0b920249f8cc92ce7b35993c173b2c0ecc16ac17d3f71e0812bfea64cb59fc', '0.9.7')"
-        . ",\n            ('045_application_capability_permissions.pgsql', 45, 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c', '0.9.7')"
-        . ",\n            ('046_application_capability_menu.pgsql', 46, '7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473', '0.9.7')";
+        . ",\n            ('045_application_capability_permissions.pgsql', 45, 'abf03048e9e8744943a92228cbe3d8719be6929673be967182e71b3311454ac2', '0.9.7')"
+        . ",\n            ('046_application_capability_menu.pgsql', 46, '98be5ab35d48add5f74a68150eadf5033e21cf6e67306151816b6cdd814cb5bf', '0.9.7')";
 
     // Query columns and ordering are copied exactly from the captured public
-    // provider used for the revision043 capture.
+    // provider used for the revision043 capture; only the deparsed-text
+    // expressions are wrapped in the shared version-noise normalization so
+    // older-parser catalog trees still compare equal to the reviewed fixture.
     $match = "left(c.relname, char_length('sand_iam')) = 'sand_iam'";
     $queries = [
         'relations' => "SELECT c.relname, c.relkind::text, c.relpersistence::text, c.relrowsecurity, c.relforcerowsecurity,
-            CASE WHEN c.relkind IN ('v','m') THEN pg_get_viewdef(c.oid, true) ELSE NULL END AS view_definition
+            CASE WHEN c.relkind IN ('v','m') THEN " . sandIam097CatalogNormalizeSql('pg_get_viewdef(c.oid, true)') . " ELSE NULL END AS view_definition
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             WHERE n.nspname='public' AND $match ORDER BY c.relname, c.relkind",
         'columns' => "SELECT c.relname, a.attnum, a.attname, a.atttypid::text, a.atttypmod, a.attnotnull,
-            a.attidentity, a.attgenerated, pg_get_expr(d.adbin,d.adrelid) AS default_expression
+            a.attidentity, a.attgenerated, " . sandIam097CatalogNormalizeSql('pg_get_expr(d.adbin,d.adrelid)') . " AS default_expression
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             JOIN pg_attribute a ON a.attrelid=c.oid
             LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
             WHERE n.nspname='public' AND $match AND a.attnum>0 AND NOT a.attisdropped
             ORDER BY c.relname,a.attnum",
-        'constraints' => "SELECT c.relname, con.conname, pg_get_constraintdef(con.oid, true) AS definition
+        'constraints' => "SELECT c.relname, con.conname, " . sandIam097CatalogNormalizeSql('pg_get_constraintdef(con.oid, true)') . " AS definition
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             JOIN pg_constraint con ON con.conrelid=c.oid
             WHERE n.nspname='public' AND $match ORDER BY c.relname,con.conname",
-        'indexes' => "SELECT c.relname, i.relname AS index_name, pg_get_indexdef(i.oid) AS definition
+        'indexes' => "SELECT c.relname, i.relname AS index_name, " . sandIam097CatalogNormalizeSql('pg_get_indexdef(i.oid)') . " AS definition
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             JOIN pg_index x ON x.indrelid=c.oid
             JOIN pg_class i ON i.oid=x.indexrelid
             WHERE n.nspname='public' AND $match ORDER BY c.relname,i.relname",
-        'triggers' => "SELECT c.relname, t.tgname, pg_get_triggerdef(t.oid, true) AS definition
+        'triggers' => "SELECT c.relname, t.tgname, " . sandIam097CatalogNormalizeSql('pg_get_triggerdef(t.oid, true)') . " AS definition
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             JOIN pg_trigger t ON t.tgrelid=c.oid
             WHERE n.nspname='public' AND $match AND NOT t.tgisinternal
             ORDER BY c.relname,t.tgname",
         'policies' => "SELECT c.relname, p.polname, p.polcmd, p.polpermissive,
-            pg_get_expr(p.polqual,p.polrelid) AS using_expression,
-            pg_get_expr(p.polwithcheck,p.polrelid) AS check_expression
+            " . sandIam097CatalogNormalizeSql('pg_get_expr(p.polqual,p.polrelid)') . " AS using_expression,
+            " . sandIam097CatalogNormalizeSql('pg_get_expr(p.polwithcheck,p.polrelid)') . " AS check_expression
             FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             JOIN pg_policy p ON p.polrelid=c.oid
             WHERE n.nspname='public' AND $match ORDER BY c.relname,p.polname",

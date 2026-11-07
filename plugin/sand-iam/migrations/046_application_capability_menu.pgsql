@@ -23,7 +23,7 @@ BEGIN
     WHERE migration_file = '046_application_capability_menu.pgsql';
     IF recorded.revision IS NOT NULL AND (
         recorded.revision <> 46
-        OR recorded.checksum <> '7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473'
+        OR recorded.checksum <> '98be5ab35d48add5f74a68150eadf5033e21cf6e67306151816b6cdd814cb5bf'
         OR recorded.package_version <> '0.9.7'
     ) THEN
         RAISE EXCEPTION 'SandIAM migration 046 ledger identity conflicts with capability menu';
@@ -35,7 +35,7 @@ BEGIN
                SELECT 1 FROM sand_iam_schema_migration
                WHERE migration_file = '045_application_capability_permissions.pgsql'
                  AND revision = 45
-                 AND checksum = 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'
+                 AND checksum = 'abf03048e9e8744943a92228cbe3d8719be6929673be967182e71b3311454ac2'
                  AND package_version = '0.9.7'
            ) THEN
             RAISE EXCEPTION 'SandIAM migration 046 requires the complete published 001-045 ledger';
@@ -125,7 +125,7 @@ BEGIN
     END IF;
 END $$;
 
-WITH self_checksum(checksum) AS (VALUES ('7a7f90ee4311682078292b8795be6f3e238b21efec6af99b96255b782de49473'))
+WITH self_checksum(checksum) AS (VALUES ('98be5ab35d48add5f74a68150eadf5033e21cf6e67306151816b6cdd814cb5bf'))
 INSERT INTO sand_iam_schema_migration (migration_file, revision, checksum, package_version, executed_time)
 SELECT '046_application_capability_menu.pgsql', 46, self_checksum.checksum, '0.9.7', CURRENT_TIMESTAMP
 FROM self_checksum

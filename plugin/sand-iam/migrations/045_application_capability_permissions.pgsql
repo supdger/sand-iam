@@ -9,6 +9,11 @@
 -- rerun, and roles inherit the two new nodes by privilege level: view follows
 -- application listers plus existing application/grant writers, write follows
 -- only the connection menu and existing grant/application write slugs.
+-- The SandIAMConnection candidate is pinned by row only, not by parentage:
+-- fresh installs keep it directly under the SandIAM root while upgraded
+-- installations already sit inside a navigation group after the 0.9.x menu
+-- regroup; revision046 reparents the permission nodes onto the capability
+-- page either way, and role inheritance resolves holders by menu code.
 BEGIN;
 
 LOCK TABLE sand_system_menu, sand_system_role_menu, sand_iam_schema_migration IN SHARE ROW EXCLUSIVE MODE;
@@ -24,7 +29,7 @@ BEGIN
     WHERE migration_file = '045_application_capability_permissions.pgsql';
     IF recorded.revision IS NOT NULL AND (
         recorded.revision <> 45
-        OR recorded.checksum <> 'fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'
+        OR recorded.checksum <> 'abf03048e9e8744943a92228cbe3d8719be6929673be967182e71b3311454ac2'
         OR recorded.package_version <> '0.9.7'
     ) THEN
         RAISE EXCEPTION 'SandIAM migration 045 ledger identity conflicts with application capability permissions';
@@ -43,16 +48,12 @@ BEGIN
 
         SELECT count(*), min(parent.id) INTO parent_rows, capability_parent_id
         FROM sand_system_menu parent
-        JOIN sand_system_menu root
-          ON root.id = parent.parent_id
-         AND root.code = 'SandIAM'
-         AND root.delete_time IS NULL
         WHERE parent.code = 'SandIAMConnection'
           AND parent.type IN (1, 2)
           AND parent.status = 1
           AND parent.delete_time IS NULL;
         IF parent_rows <> 1 THEN
-            RAISE EXCEPTION 'SandIAM migration 045 requires exactly one active SandIAMConnection parent, found %', parent_rows;
+            RAISE EXCEPTION 'SandIAM migration 045 requires exactly one active SandIAMConnection menu, found %', parent_rows;
         END IF;
 
         INSERT INTO sand_system_menu (parent_id, name, code, slug, type, path, component, icon, sort, is_hidden, status, create_time, update_time)
@@ -139,7 +140,7 @@ BEGIN
     END IF;
 END $$;
 
-WITH self_checksum(checksum) AS (VALUES ('fec88f78dfdf09a2fb2c6ba5c251bb290a7b2f9f6e9e7be60d19f496614e860c'))
+WITH self_checksum(checksum) AS (VALUES ('abf03048e9e8744943a92228cbe3d8719be6929673be967182e71b3311454ac2'))
 INSERT INTO sand_iam_schema_migration (migration_file, revision, checksum, package_version, executed_time)
 SELECT '045_application_capability_permissions.pgsql', 45, self_checksum.checksum, '0.9.7', CURRENT_TIMESTAMP
 FROM self_checksum
