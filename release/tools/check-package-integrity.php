@@ -760,6 +760,8 @@ $requiredFiles = [
         '../../docs/user-guide/security-hardening.md',
         '../../docs/user-guide/backup-and-restore.md',
         '../../docs/user-guide/troubleshooting.md',
+        '../../docs/user-guide/openapi-import.md',
+        '../../docs/user-guide/release-package-verification.md',
     ],
 ];
 foreach ($requiredFiles as $area => $files) {
