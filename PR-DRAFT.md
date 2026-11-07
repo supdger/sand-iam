@@ -75,3 +75,46 @@ SandIAM 管理端前端（`sandadmin-artd/src/views/plugin/sand-iam/`）+ 菜单
 - `getting-started` 两个行为测试入口引用已删除 mock 模块（基线既有），frontend-gate 全量扫描因此 4 条未解析；是否清理该死代码属独立工作包。
 - B3 页面与工作台的端到端联调（真实菜单下发、CheckAuth、后端 422/409 分支）未实跑，依赖宿主运行时；契约字段已按 WP-A1 后端实现逐字段核对。
 - 迁移 046 在全新安装与 0.9.6→0.9.7 升级两条路径的最终树形态已由 scratch 库分别推演（组不存在时挂根、regroup 再归位；升级路径组已存在直接归位），未在真实宿主菜单表全量数据上跑。
+
+# WP-F3：getting-started 死代码挂架清理（frontend-gate 归零）
+
+- 工作包：WP-F3（第二批收尾修复，固定模型 SWE-2）
+- 背景：WP-B1 已披露 `getting-started/{behavior,viewport-entry}.ts` 引用
+  `ee81373` 删除的 `*.auth-mock`/`*.http-mock` 共 4 条不可解析（phase1 基线
+  既有，非本批引入）。
+- 查证结论：该目录下 4 个挂架文件
+  （`getting-started.behavior.ts`、`getting-started.viewport-entry.ts`、
+  `getting-started.behavior-entry.ts`、`getting-started.index-mount.ts`）
+  构成自闭合的浏览器行为测试挂架簇——仅互相引用，无任何存活代码、路由、
+  菜单、脚本或测试引用（全仓 grep `runGettingStartedBehaviorHarness`/
+  `mountGettingStartedPage`/`wizardHarnessWindow`/`configureWizardAuth`/
+  `configureWizardHttpMock`/`wizardHttpSavePostCount` 及文件名，仓库内
+  命中仅 `release/tools/package-payload-policy.php` 排除清单与本文档）。
+  `ee81373`「keep only user-facing payload」已删除全部 mock 与
+  `sandadmin-artd/tests/`、`portal/tests/` 测试树，挂架失去全部消费者；
+  且 `package-payload-policy.php` 本就将这 4 个文件排除在发布载荷外。
+- 页面本体未动：`index.vue`/`wizardEntry.ts`/`wizardState.ts`/
+  `WizardStepForm.vue` 为存活页面——菜单种子（`install.sql`、
+  `lifecycle/base.pgsql`、`plugin/sand-iam/install.sql`）注册
+  「第一次使用」页，`components/GoalGuide.vue` 与 `index/index.vue`
+  仍路由至 `/sand-iam/getting-started`。
+- 处置：删除上述 4 个死代码文件（347 行）。`package-payload-policy.php`
+  排除清单中对应条目保留为无害残留（路径不存在时排除项不生效；若未来
+  恢复挂架文件仍会被排除在发布载荷外），未改动该文件。
+
+## 验证（实跑）
+
+| 命令 | 退出码 | 输出末段 |
+|---|---|---|
+| `php ../sand-ai/tools/frontend-gate.php . sand-iam`（清理前复现） | 1 | `未解析：getting-started/{behavior,viewport-entry}.ts: ./getting-started.auth-mock|http-mock` 共 4 条 `拒绝产出发行 ZIP` |
+| `php ../sand-ai/tools/frontend-gate.php . sand-iam`（清理后） | 0 | `前端闸门：相对 import 解析 112 个文件 / 384 条相对 import` `前端闸门：通过` |
+
+- pre-commit（`scan_change_quality.py --repository-review`）：prepare →
+  /tmp 评审结论 → record → check 通过，未删 hook、未用 `--no-verify`、
+  未用 `git add -A`。
+
+## 未执行/未验证项
+
+- 未推送、未合并、未部署；仅本地 `fix/0410-phase2` 分支小粒度提交。
+- `vue-tsc --noEmit` 未执行（同 WP-B1 既有边界：宿主无 node_modules）；
+  删除的 4 个文件不被任何存活文件 import，不影响类型检查面。
