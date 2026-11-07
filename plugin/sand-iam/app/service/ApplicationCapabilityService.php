@@ -26,6 +26,23 @@ use think\facade\Db;
  * managed binding is one workload client (code `managed`) per environment;
  * disabled rows are never resurrected and no credential material is issued,
  * returned, or persisted here.
+ *
+ * Design trade-offs recorded for audit B8/B15/B17:
+ * - The advisory lock uses OnboardingService::advisoryKey(org, app), NOT the
+ *   AccessMatrixService key domain: matrix keys derive from unresolved request
+ *   fields (organization_id may be null, application may be named by code), so
+ *   no single key can express "same resolved application" for both flows.
+ *   Correctness under concurrent B3/matrix writes therefore rests on
+ *   SERIALIZABLE + the in-lock revision recheck (losers get 409), which is
+ *   the deliberate backstop rather than shared mutual exclusion.
+ * - SET SESSION CHARACTERISTICS … SERIALIZABLE is restored in finally; a PHP
+ *   fatal inside the window can leave the pooled connection defaulting to
+ *   SERIALIZABLE until reconnect — accepted as a performance-only residual,
+ *   matching AccessMatrixService/OnboardingService.
+ * - Grants written here intentionally carry no expire_time/quota_policy/
+ *   network_policy: the two-key flow is a coarse on/off switch and those
+ *   constraints stay owned by the manual grant admin, which is also where an
+ *   expired grant must be repaired.
  */
 final class ApplicationCapabilityService
 {
