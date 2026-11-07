@@ -265,8 +265,10 @@
         ? '这些功能'
         : names.map((name) => `『${name}』`).join('、')
     try {
+      // 收回只作用于托管调用通道（code=managed 的调用身份）上的授权；
+      // 同应用其他接入方式的 grant 不受影响，文案不得过度承诺。
       await ElMessageBox.confirm(
-        `收回后这个应用就不能再用${label}了。`,
+        `收回后，托管调用通道将不能再使用${label}；通过其他接入方式的授权不受影响。`,
         '收回功能',
         {
           type: 'warning',
