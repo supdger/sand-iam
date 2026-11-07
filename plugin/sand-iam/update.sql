@@ -1,5 +1,7 @@
 -- SandIAM 0.8.2 standard upgrade: strict43 -> immutable043, strict44 -> no DDL.
 -- Catalog input: public SandPackage 0.1.10-rc.1 / PostgreSQL 18.6 exact six-group capture.
+-- 0.9.6 converges the auto-provisioned default application row to the neutral
+-- 'default-app' identity; the structural rename is data-only and never DDL.
 BEGIN ISOLATION LEVEL REPEATABLE READ;
 DO $sand_iam_upgrade_082$
 DECLARE
@@ -535,6 +537,51 @@ UPDATE "sand_system_menu" SET "name" = 'CAS 单点接入', "update_time" = NOW()
 UPDATE "sand_system_menu" SET "name" = '自动同步用户（SCIM）', "update_time" = NOW() WHERE "code" = 'SandIAMScimTokens';
 UPDATE "sand_system_menu" SET "name" = '网络设备登录认证（RADIUS）', "update_time" = NOW() WHERE "code" = 'SandIAMRadiusNas';
 $iam082_menu_regroup$;
+    EXECUTE $iam096_default_app$-- SandIAM default application neutralization (0.9.6).
+-- Releases before 0.9.6 auto-provisioned the first-use default application
+-- under a product-specific code and display name. The neutral defaults are
+-- 'default-app' / '默认应用'. Recognition is structural and never name-based:
+-- the provisioned chain is the application that owns the 'prod' environment
+-- hosting the 'sand-ai' workload client whose audience is 'sand-ai'. Manually
+-- registered applications without that exact auto-provisioned chain are
+-- untouched, and at most one application per organization is renamed.
+-- Identifiers stay numeric, so environments, clients, grants, credentials,
+-- audits and every external reference keep working unchanged. The statement
+-- is idempotent: re-running converges to the same state.
+UPDATE "sand_iam_application" app
+SET "code" = 'default-app',
+    "name" = '默认应用',
+    "update_time" = NOW()
+WHERE app."delete_time" IS NULL
+  AND app."code" <> 'default-app'
+  AND NOT EXISTS (
+      SELECT 1 FROM "sand_iam_application" existing
+      WHERE existing."organization_id" = app."organization_id"
+        AND existing."code" = 'default-app'
+        AND existing."delete_time" IS NULL
+  )
+  AND app."id" = (
+      SELECT candidate."id"
+      FROM "sand_iam_application" candidate
+      WHERE candidate."organization_id" = app."organization_id"
+        AND candidate."delete_time" IS NULL
+        AND candidate."code" <> 'default-app'
+        AND EXISTS (
+            SELECT 1
+            FROM "sand_iam_environment" env
+            JOIN "sand_iam_workload_client" client
+              ON client."environment_id" = env."id"
+            WHERE env."application_id" = candidate."id"
+              AND env."delete_time" IS NULL
+              AND env."code" = 'prod'
+              AND client."delete_time" IS NULL
+              AND client."code" = 'sand-ai'
+              AND client."audience" = 'sand-ai'
+        )
+      ORDER BY candidate."id"
+      LIMIT 1
+  );
+$iam096_default_app$;
 END $sand_iam_upgrade_082$;
 
 COMMIT;
