@@ -1,6 +1,7 @@
 <?php
 
 use plugin\SandIam\app\admin\controller\AccessMatrixController;
+use plugin\SandIam\app\admin\controller\ApplicationCapabilityController;
 use plugin\SandIam\app\admin\controller\ApplicationController;
 use plugin\SandIam\app\admin\controller\AdminOrganizationGrantController;
 use plugin\SandIam\app\admin\controller\AdminApplicationGrantController;
@@ -118,6 +119,8 @@ Route::group('/app/sand-iam/admin', static function (): void {
     Route::get('/access-matrix/index', [AccessMatrixController::class, 'index']);
     Route::post('/access-matrix/grant', [AccessMatrixController::class, 'grant']);
     Route::post('/access-matrix/ensure-defaults', [AccessMatrixController::class, 'ensureDefaults']);
+    Route::get('/application/{application_id}/capabilities', [ApplicationCapabilityController::class, 'index']);
+    Route::post('/application/{application_id}/capabilities', [ApplicationCapabilityController::class, 'save']);
     Route::post('/policy/publish', [PolicyController::class, 'publish']);
     Route::post('/policy/rollback', [PolicyController::class, 'rollback']);
     Route::get('/policy/versions', [PolicyController::class, 'versions']);
@@ -351,6 +354,7 @@ Route::disableDefaultRoute(AuthorizationController::class);
 Route::disableDefaultRoute(SelfServiceController::class);
 foreach ([
     AccessMatrixController::class,
+    ApplicationCapabilityController::class,
     ApplicationController::class,
     AdminOrganizationGrantController::class,
     AdminApplicationGrantController::class,
