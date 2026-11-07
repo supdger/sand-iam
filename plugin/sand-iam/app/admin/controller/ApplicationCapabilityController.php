@@ -25,7 +25,7 @@ final class ApplicationCapabilityController extends BaseController
     public function index(Request $request, string $application_id): Response
     {
         $data = (new ApplicationCapabilityService())->catalog(
-            (int) $application_id,
+            $this->applicationId($application_id),
             $this->access(),
             fn (): bool => $this->canSave(),
         );
@@ -40,7 +40,7 @@ final class ApplicationCapabilityController extends BaseController
             throw new ApiException('SAND_IAM_CAPABILITY_IDEMPOTENCY_KEY_INVALID: 缺少或非法的 Idempotency-Key 请求头', 400);
         }
         $result = (new ApplicationCapabilityService())->save(
-            (int) $application_id,
+            $this->applicationId($application_id),
             $request->post(),
             $idempotencyKey,
             $this->adminId(),
@@ -56,7 +56,23 @@ final class ApplicationCapabilityController extends BaseController
                 'data' => $payload,
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)->withStatus(422);
         }
-        return $this->success($payload, $result['replayed'] ? '请求已处理' : 'success');
+        // 信封 message 与业务 payload 一样使用中文；重放如实标注返回的是
+        // 既有结果，成功/部分完成直接沿用 payload 自带的中文 message。
+        return $this->success($payload, $result['replayed'] ? '请求已处理，返回既有结果' : (string) ($payload['message'] ?? '处理完成'));
+    }
+
+    /**
+     * Route params arrive as strings; a bare (int) cast would silently
+     * truncate '1abc' to 1. Require the full decimal id form instead — 18
+     * digits keeps the value inside signed 64-bit range — and treat anything
+     * else as a missing application.
+     */
+    private function applicationId(string $raw): int
+    {
+        if (preg_match('/^[1-9][0-9]{0,17}$/D', $raw) !== 1) {
+            throw new ApiException('SAND_IAM_CAPABILITY_APPLICATION_INVALID: 应用编号不正确', 404);
+        }
+        return (int) $raw;
     }
 
     private function access(): AdminOrganizationAccess
