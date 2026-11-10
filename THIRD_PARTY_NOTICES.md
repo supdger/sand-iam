@@ -85,4 +85,4 @@ Upstream project and license information:
 - https://github.com/vuejs/router
 - https://github.com/element-plus/element-plus
 
-SandIAM 自身以 `LICENSE` 中的 Apache-2.0 发布；其版权告知见 `NOTICE`。
+SandIAM 自身以 `LICENSE` 中的 MIT 发布；其版权告知见 `NOTICE`。

@@ -2,7 +2,7 @@
   "name": "sand/iam-sdk",
   "description": "SandIAM PHP/Webman authorization client",
   "type": "library",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "homepage": "https://github.com/supdger/sand-plugins",
   "support": {
     "issues": "https://github.com/supdger/sand-plugins/issues",
