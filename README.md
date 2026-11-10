@@ -25,7 +25,7 @@ SandIAM 面向 SandAdmin 与业务服务接入；Casdoor 面向通用身份提�
 | 管理委派与运营 | 组织/应用范围管理委派、初始化配置预检、执行与回滚 | 全局管理员与组织管理员；细粒度委派、初始化预检和回滚流程需按项目核对 |
 | 事件通知 | Webhook 订阅、投递记录、重试与退避 | 登录、用户及资源变更等 Webhook 事件；投递保障要求需按项目核对，见[Webhook 说明](https://casdoor.ai/docs/webhooks/overview/) |
 | 安全与审计 | 重复失败阈值告警、认证/授权/调用审计及归档保留；不等同风险评分或 SIEM | 有操作记录及日志接入；告警、归档保留和审计合规要求需按项目核对，见[记录源码](https://github.com/casdoor/casdoor/blob/master/object/record.go) |
-| SDK 与业务接入 | PHP、TypeScript、Dart SDK，业务与机器调用示例；Apache-2.0 | 多语言 SDK，包括 PHP；Apache-2.0，见[官方仓库](https://github.com/casdoor/casdoor) |
+| SDK 与业务接入 | PHP、TypeScript、Dart SDK，业务与机器调用示例；MIT | 多语言 SDK，包括 PHP；Apache-2.0，见[官方仓库](https://github.com/casdoor/casdoor) |
 
 接入应用须在产生业务副作用前执行权限检查，并将数据范围转为业务查询过滤；登录成功或管理台保存配置不代表业务权限已经生效。SandIAM 的协议、外部身份源和 worker 按配置启用，worker 默认关闭；历史版本的验收不代表当前版本在所有宿主上已通过。
 
@@ -62,4 +62,4 @@ SandIAM 面向 SandAdmin 与业务服务接入；Casdoor 面向通用身份提�
 
 ## 许可与反馈
 
-项目按 [Apache-2.0](LICENSE) 分发，版权与第三方许可见 [NOTICE](NOTICE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题按 [SECURITY.md](SECURITY.md) 私下报告；问题与建议请提交到 [Issues](https://github.com/supdger/sand-iam/issues)。
+项目按 [MIT](LICENSE) 分发，版权与第三方许可见 [NOTICE](NOTICE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。贡献见 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题按 [SECURITY.md](SECURITY.md) 私下报告；问题与建议请提交到 [Issues](https://github.com/supdger/sand-iam/issues)。

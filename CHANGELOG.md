@@ -3,6 +3,10 @@
 本文件只记录能够由当前公开源码、迁移和包契约复核的发行变化，不补写无法从权威来源确认的
 历史版本内容。日期标记为“待发布”的条目仍是候选，不代表已经上传、部署或公开发布。
 
+## Unreleased
+
+- 项目许可证由 Apache-2.0 改为 MIT，版权人为青岛沙盒创意网络科技有限公司。
+
 ## 0.9.7（候选，待发布）
 
 - 新增「应用功能授权」两步式聚合授权后端（WP-A1）：`GET/POST /application/{application_id}/capabilities`（`ApplicationCapabilityController` + `ApplicationCapabilityService`），隐藏权限节点 `sand_iam:application_capability:index`/`save`（迁移 045，type 3 隐藏菜单，随 SandIAM 连接菜单分组并按查看/管理分级向既有角色继承）。目录由 `ServiceCatalog` 声明驱动，服务元数据扩展 `group_name`/`audience`、动作扩展 `description`；缺中文名、缺中文说明或缺可解析分组的条目一律过滤并限频记录，不回退裸 action code 上屏；`sand_iam_service`/`sand_iam_service_action` 经迁移 044 增加对应列并做确定性中文回填，受众优先取声明值、其次由授权历史中唯一受众推导，歧义或为空保持 NULL。

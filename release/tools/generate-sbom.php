@@ -181,7 +181,7 @@ $document = [
     'metadata' => [
         'component' => [
             'type' => 'application', 'bom-ref' => $rootRef, 'name' => 'SandIAM', 'version' => $version,
-            'licenses' => [['license' => ['id' => 'Apache-2.0']]],
+            'licenses' => [['license' => ['id' => 'MIT']]],
             'properties' => [
                 ['name' => 'sandiam:license-evidence', 'value' => 'LICENSE'],
                 ['name' => 'sandiam:notice', 'value' => 'NOTICE'],

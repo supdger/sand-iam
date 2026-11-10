@@ -1,7 +1,7 @@
 {
   "name": "@sand/iam-browser",
   "version": "0.1.0",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "homepage": "https://github.com/supdger/sand-plugins",
   "repository": {
     "type": "git",

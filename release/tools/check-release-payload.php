@@ -36,9 +36,13 @@ $record = static function (string $name, bool $passed, string $detail = '') use 
 };
 
 $projectLicense = is_file($root . '/LICENSE') ? file_get_contents($root . '/LICENSE') : false;
-$hasCompleteApacheLicense = is_string($projectLicense)
-    && hash_equals('c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4', hash('sha256', $projectLicense));
-$record('project license exists', $hasCompleteApacheLicense, 'LICENSE must contain the complete unmodified Apache License 2.0 text.');
+$hasCompleteMitLicense = is_string($projectLicense)
+    && str_contains($projectLicense, 'MIT License')
+    && str_contains($projectLicense, 'Copyright (c) 2026 青岛沙盒创意网络科技有限公司')
+    && str_contains($projectLicense, 'Permission is hereby granted, free of charge')
+    && str_contains($projectLicense, 'THE SOFTWARE IS PROVIDED "AS IS"')
+    && str_contains($projectLicense, 'AUTHORS OR COPYRIGHT HOLDERS BE LIABLE');
+$record('project license exists', $hasCompleteMitLicense, 'LICENSE must contain the complete MIT license text with the SandIAM copyright line.');
 $securityPolicy = is_file($root . '/SECURITY.md') ? file_get_contents($root . '/SECURITY.md') : false;
 $hasPrivateSecurityChannel = is_string($securityPolicy)
     && preg_match('#(?:https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/security/advisories/new|mailto:[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})#i', $securityPolicy) === 1;
@@ -132,20 +136,20 @@ $phpSdk = json_decode((string) file_get_contents($root . '/sdk/php/composer.json
 $typeScriptSdk = json_decode((string) file_get_contents($root . '/sdk/typescript/package.json'), true);
 $dartSdk = (string) file_get_contents($root . '/sdk/dart/pubspec.yaml');
 $record(
-    'independently distributed SDKs carry Apache-2.0 metadata, license, and notice',
+    'independently distributed SDKs carry MIT metadata, license, and notice',
     array_values(array_filter($sdkLegalFiles, static fn (string $path): bool => !isset($payloadSet[$path]))) === []
         && $sdkLegalFilesMatchProject
         && is_array($phpSdk)
-        && ($phpSdk['license'] ?? null) === 'Apache-2.0'
+        && ($phpSdk['license'] ?? null) === 'MIT'
         && (($phpSdk['support']['source'] ?? null) === 'https://github.com/supdger/sand-plugins')
         && is_array($typeScriptSdk)
-        && ($typeScriptSdk['license'] ?? null) === 'Apache-2.0'
+        && ($typeScriptSdk['license'] ?? null) === 'MIT'
         && (($typeScriptSdk['repository']['url'] ?? null) === 'https://github.com/supdger/sand-plugins.git')
         && in_array('LICENSE', $typeScriptSdk['files'] ?? [], true)
         && in_array('NOTICE', $typeScriptSdk['files'] ?? [], true)
         && str_contains($dartSdk, 'repository: https://github.com/supdger/sand-plugins')
         && str_contains($dartSdk, 'issue_tracker: https://github.com/supdger/sand-plugins/issues'),
-    'each SDK must be independently redistributable with its own Apache-2.0 metadata, LICENSE, NOTICE, and current project support URL.'
+    'each SDK must be independently redistributable with its own MIT metadata, LICENSE, NOTICE, and current project support URL.'
 );
 
 $testPayload = array_values(array_filter($payload, static fn (string $path): bool => preg_match('#(?:^|/)tests?(?:/|$)|(?:^|/)[^/]+\.(?:test|spec)\.[^/]+$#i', $path) === 1));
