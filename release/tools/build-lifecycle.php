@@ -22,8 +22,8 @@ require_once __DIR__ . '/lifecycle-sql.php';
 $options = getopt('', ['profile:', 'output:', 'check', 'write']);
 $root = dirname(__DIR__, 2);
 $version = parse_ini_file($root . '/info.ini')['version'] ?? '';
-$profile = $options['profile'] ?? (in_array($version, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true) ? $version : 'legacy-0.7.3');
-if (!in_array($profile, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', 'legacy-0.7.3'], true)) throw new RuntimeException('Unsupported lifecycle profile');
+$profile = $options['profile'] ?? (in_array($version, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true) ? $version : 'legacy-0.7.3');
+if (!in_array($profile, ['0.7.6', '0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7', 'legacy-0.7.3'], true)) throw new RuntimeException('Unsupported lifecycle profile');
 if (isset($options['output'], $options['write']) || isset($options['check'], $options['write'])) {
     throw new RuntimeException('Choose check, a new output directory, or explicit source write');
 }
@@ -88,10 +88,20 @@ $migrations = [
     '041_authorization_scope_integrity.pgsql',
     '042_permission_menu_hierarchy.pgsql',
     '043_scope_audit_event_key.pgsql',
+    '044_application_capability_directory.pgsql',
+    '045_application_capability_permissions.pgsql',
+    '046_application_capability_menu.pgsql',
 ];
 
-if (!in_array($profile, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)) $migrations = array_slice($migrations, 0, -1);
-if ($profile === 'legacy-0.7.3') $migrations = array_slice($migrations, 0, -1);
+// Revision 044/045/046 belong to the 0.9.7 capability release only;
+// every earlier profile keeps the published 001-043 ledger boundary.
+if ($profile === '0.9.7') {
+    // keep the full manifest
+} elseif (in_array($profile, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) {
+    $migrations = array_slice($migrations, 0, -3);
+} else {
+    $migrations = array_slice($migrations, 0, -4);
+}
 
 /** @return non-empty-string */
 function readRequired(string $file): string
@@ -330,7 +340,7 @@ SQL;
         . $inventoryHeader . "\n" . rtrim($admission) . "\n" . implode("\n", $inventoryLines)
         . $base;
     $install .= collapseDoBlocks(migrationPayload($sourceDirectory, array_slice($migrations, 4)));
-    if (in_array($profile, ['0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)) {
+    if (in_array($profile, ['0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)) {
         // The top-level navigation regroup applies only after every flat-menu
         // seed and ownership guard has run, so a fresh install and an upgrade
         // converge on the same grouped tree; it only touches
@@ -338,11 +348,11 @@ SQL;
         $install .= "\n-- lifecycle source: lifecycle/menu-regroup.pgsql\n"
             . rtrim(readRequired($root . '/lifecycle/menu-regroup.pgsql')) . "\n";
     }
-    $preflightFile = in_array($profile, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)
+    $preflightFile = in_array($profile, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)
         ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
         : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
     $update = readRequired($root . $preflightFile);
-    if (in_array($profile, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)) {
+    if (in_array($profile, ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)) {
         // Admission and migration share one transaction: failure restores both
         // the audit constraint and ledger. The standalone admission is read-only.
         $admission = str_replace('BEGIN TRANSACTION READ ONLY;', 'BEGIN;', $update);
@@ -358,7 +368,10 @@ SQL;
             ))
             . "COMMIT;\n";
     }
-    if (in_array($profile, ['0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)) {
+    if ($profile === '0.9.7') {
+        require_once __DIR__ . '/build-upgrade-097.php';
+        $update = sandIamBuild097Update($root);
+    } elseif (in_array($profile, ['0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)) {
         require_once __DIR__ . '/build-upgrade-082.php';
         $update = sandIamBuild082Update($root);
     }

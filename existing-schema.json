@@ -1,12 +1,12 @@
 {
   "format": 1,
   "app": "sand-iam",
-  "version": "0.9.5",
-  "install_sql_sha256": "032665eeeb6392322dfad389baaa468321e14c8f3542e5c2e8a14d13a5a4d68e",
+  "version": "0.9.7",
+  "install_sql_sha256": "7c497a3b6111438c34ebe93cb254942cbb421cd45b024527bdb5758c7b5e71db",
   "ledger_table": "sand_iam_schema_migration",
-  "ledger_rows": 44,
-  "ledger_sha256": "17018c1c510abfda53f466574a1dfd85e9b5fa3eef24b754767947a29220e83e",
+  "ledger_rows": 47,
+  "ledger_sha256": "940fc3c0b28a6d039a29edadad08709a38c8a14af917060cfeb1e75b2bc54bb3",
   "table_count": 86,
   "table_names_sha256": "5feaa153988f0b1e05a04e6c91192c8ef19d9ee8fb7b4bf51aa8350bd369ea88",
-  "catalog_schema_sha256": "4adf9cd8200fab6f95bc11542d3a5f973aebf78107f31d55a235faa1dc34ecb7"
+  "catalog_schema_sha256": "539650c41de4848d93680abf20184d3d72bb8c76dfc0db28248e91e02a5cd703"
 }

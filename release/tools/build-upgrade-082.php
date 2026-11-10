@@ -108,8 +108,12 @@ function sandIamBuild082Update(string $root): string
         || str_contains($menuRegroup, '$iam082_menu_regroup$')) {
         throw new RuntimeException('Menu regroup lifecycle source differs from the exact reviewed input');
     }
-    foreach (['$iam082_prior$', '$iam082_migration$'] as $tag) {
-        if (str_contains($oldAdmissionBody . $migrationBody, $tag)) {
+    $defaultAppRename = file_get_contents($root . '/lifecycle/default-application-rename.pgsql');
+    if (!is_string($defaultAppRename) || trim($defaultAppRename) === '') {
+        throw new RuntimeException('Default application neutralization lifecycle source is unreadable');
+    }
+    foreach (['$iam082_prior$', '$iam082_migration$', '$iam096_default_app$'] as $tag) {
+        if (str_contains($oldAdmissionBody . $migrationBody . $menuRegroup . $defaultAppRename, $tag)) {
             throw new RuntimeException('Migration dollar-quote collision');
         }
     }
@@ -161,6 +165,9 @@ SQL;
         . "    EXECUTE \$iam082_menu_regroup\$"
         . $menuRegroup
         . "\$iam082_menu_regroup\$;\n"
+        . "    EXECUTE \$iam096_default_app\$"
+        . $defaultAppRename
+        . "\$iam096_default_app\$;\n"
         . "END \$sand_iam_upgrade_082\$;\n";
 
     // The public PostgreSQL executor understands multiline dollar-quoted DO
@@ -168,5 +175,7 @@ SQL;
     // folding lines could turn a leading "--" into a comment on every command.
     return "-- SandIAM 0.8.2 standard upgrade: strict43 -> immutable043, strict44 -> no DDL.\n"
         . "-- Catalog input: public SandPackage 0.1.10-rc.1 / PostgreSQL 18.6 exact six-group capture.\n"
+        . "-- 0.9.6 converges the auto-provisioned default application row to the neutral\n"
+        . "-- 'default-app' identity; the structural rename is data-only and never DDL.\n"
         . "BEGIN ISOLATION LEVEL REPEATABLE READ;\n" . $upgrade . "\nCOMMIT;\n";
 }

@@ -20,7 +20,7 @@ function sandIamCheckExistingSchema(string $root): void
         || $manifest['install_sql_sha256'] !== hash_file('sha256', $root . '/plugin/sand-iam/install.sql')) {
         throw new RuntimeException('existing-schema package identity or SQL digest mismatch');
     }
-    $preflightFile = in_array(($info['version'] ?? ''), ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)
+    $preflightFile = in_array(($info['version'] ?? ''), ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)
         ? '/lifecycle/update-073-or-075-or-076-to-080-preflight.pgsql'
         : '/lifecycle/update-073-or-075-to-076-preflight.pgsql';
     $preflight = (string) file_get_contents($root . $preflightFile);
@@ -44,7 +44,7 @@ function sandIamCheckExistingSchema(string $root): void
     if (preg_match('/\b(?:CREATE|ALTER|DROP)\s+(?:TABLE|INDEX|SEQUENCE|VIEW|TRIGGER|FUNCTION)\b/i', $migration) === 1) {
         throw new RuntimeException('revision042 changed structure; recapture reviewed catalog fingerprint');
     }
-    if (in_array(($info['version'] ?? ''), ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)) {
+    if (in_array(($info['version'] ?? ''), ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6', '0.9.7'], true)) {
         $name = '043_scope_audit_event_key.pgsql';
         $scopeMigration = (string) file_get_contents($root . '/migrations/' . $name);
         if ($scopeMigration !== file_get_contents($root . '/plugin/sand-iam/migrations/' . $name)
@@ -53,6 +53,23 @@ function sandIamCheckExistingSchema(string $root): void
             throw new RuntimeException('revision043 source mirror or ledger checksum mismatch');
         }
         $rows[$name] = "{$name}|43|{$checksum[1]}|0.8.0\n";
+        ksort($rows, SORT_STRING);
+    }
+    if (($info['version'] ?? '') === '0.9.7') {
+        foreach ([
+            '044_application_capability_directory.pgsql' => ['7e0b920249f8cc92ce7b35993c173b2c0ecc16ac17d3f71e0812bfea64cb59fc', 44],
+            '045_application_capability_permissions.pgsql' => ['abf03048e9e8744943a92228cbe3d8719be6929673be967182e71b3311454ac2', 45],
+            '046_application_capability_menu.pgsql' => ['98be5ab35d48add5f74a68150eadf5033e21cf6e67306151816b6cdd814cb5bf', 46],
+        ] as $capabilityName => [$capabilityChecksum, $capabilityRevision]) {
+            $capabilityMigration = (string) file_get_contents($root . '/migrations/' . $capabilityName);
+            if ($capabilityMigration !== file_get_contents($root . '/plugin/sand-iam/migrations/' . $capabilityName)
+                || preg_match("/self_checksum\\(checksum\\) AS \\(VALUES \\('([0-9a-f]{64})'\\)\\)/", $capabilityMigration, $capabilityMatch) !== 1
+                || $capabilityMatch[1] !== $capabilityChecksum
+                || hash('sha256', str_replace($capabilityChecksum, '__SELF_SHA256__', $capabilityMigration)) !== $capabilityChecksum) {
+                throw new RuntimeException('revision' . $capabilityRevision . ' source mirror or ledger checksum mismatch');
+            }
+            $rows[$capabilityName] = "{$capabilityName}|{$capabilityRevision}|{$capabilityChecksum}|0.9.7\n";
+        }
         ksort($rows, SORT_STRING);
     }
     if ($manifest['ledger_rows'] !== count($rows)
@@ -65,9 +82,11 @@ function sandIamCheckExistingSchema(string $root): void
     }
     if ($manifest['table_count'] !== 86
         || $manifest['table_names_sha256'] !== '5feaa153988f0b1e05a04e6c91192c8ef19d9ee8fb7b4bf51aa8350bd369ea88'
-        || $manifest['catalog_schema_sha256'] !== (in_array(($info['version'] ?? ''), ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5'], true)
-            ? '4adf9cd8200fab6f95bc11542d3a5f973aebf78107f31d55a235faa1dc34ecb7'
-            : '3ba37e63adace3e7950cdd1f435010216d351929c27662a24ae55eedadc6821e')) {
+        || $manifest['catalog_schema_sha256'] !== ($info['version'] === '0.9.7'
+            ? '539650c41de4848d93680abf20184d3d72bb8c76dfc0db28248e91e02a5cd703'
+            : (in_array(($info['version'] ?? ''), ['0.8.0', '0.8.1', '0.8.2', '0.8.3', '0.8.4', '0.8.5', '0.8.6', '0.9.0', '0.9.1', '0.9.2', '0.9.3', '0.9.4', '0.9.5', '0.9.6'], true)
+                ? '4adf9cd8200fab6f95bc11542d3a5f973aebf78107f31d55a235faa1dc34ecb7'
+                : '3ba37e63adace3e7950cdd1f435010216d351929c27662a24ae55eedadc6821e'))) {
         throw new RuntimeException('Reviewed read-only structure fingerprint mismatch');
     }
 }

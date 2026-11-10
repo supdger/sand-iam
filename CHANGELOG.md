@@ -3,6 +3,19 @@
 本文件只记录能够由当前公开源码、迁移和包契约复核的发行变化，不补写无法从权威来源确认的
 历史版本内容。日期标记为“待发布”的条目仍是候选，不代表已经上传、部署或公开发布。
 
+## 0.9.7（候选，待发布）
+
+- 新增「应用功能授权」两步式聚合授权后端（WP-A1）：`GET/POST /application/{application_id}/capabilities`（`ApplicationCapabilityController` + `ApplicationCapabilityService`），隐藏权限节点 `sand_iam:application_capability:index`/`save`（迁移 045，type 3 隐藏菜单，随 SandIAM 连接菜单分组并按查看/管理分级向既有角色继承）。目录由 `ServiceCatalog` 声明驱动，服务元数据扩展 `group_name`/`audience`、动作扩展 `description`；缺中文名、缺中文说明或缺可解析分组的条目一律过滤并限频记录，不回退裸 action code 上屏；`sand_iam_service`/`sand_iam_service_action` 经迁移 044 增加对应列并做确定性中文回填，受众优先取声明值、其次由授权历史中唯一受众推导，歧义或为空保持 NULL。
+- 授权写路径为 serializable 事务 + `pg_advisory_xact_lock`（键含 application_id）+ 锁内 revision 复核 + 逐项 grant/revoke + 同事务审计；`Idempotency-Key` 按 actor/机构/应用/操作域隔离，指纹含规范化排序后的能力 ID、expected_revision 与策略版本，同键同指纹重放持久化结果（`idempotent_replay=true`），同键异指纹 409；重放先于 revision 校验，持久化结果不含任何明文凭证。撤销仅置 `status=2`+`revoked_time` 并保留历史行；重新勾选撤销项复用同一行恢复，`status=2` 且 `revoked_time` 为空的管理员停用行不静默复活，逐项中文冲突。
+- 环境与托管调用身份自动匹配：仅解析当前应用有效机构绑定；无候选时仅创建受控默认环境（`prod`/`正式`，即 `AccessMatrixInput::DEFAULT_ENVIRONMENT_NAME`），多候选报中文冲突不取首行；每个 (environment, service) 复用或创建 `code=managed`、name「托管调用身份」、audience 取服务契约受众的 workload client，同 environment+code 唯一，绝不新建第二个，受众不符逐项冲突；禁用的环境/client/服务/动作/grant 一律不复活。POST 不返回、不落库任何明文凭证。
+- 独立审计必修项修复：迁移 045 的能力权限继承按查看/管理拆分——`application_capability:index` 随 `application:index` 及既有应用/授权写权限继承，`application_capability:save` 仅随 SandIAM 连接菜单与 `grant:save`/`application:save`/`application:update` 继承，查看级角色不再获得写权限；默认应用中性化识别收紧为「default 机构 + 0.9.6 前发布的固定应用标识 + 有效 prod/sand-ai/sand-ai 链 + 无既有 default-app + 唯一候选」，`AccessMatrixService` 运行时探针与 `lifecycle/default-application-rename.pgsql` 逐字段对齐，停用应用/环境/client 不再被改名或复活；应用功能授权 save 的审计 request_id 并入幂等回执，同一 `X-Request-Id` 下不同 `Idempotency-Key` 的连续保存不再因审计唯一键冲突回滚 500；B3 自动建环境名统一为 `AccessMatrixInput::DEFAULT_ENVIRONMENT_NAME`；新增 `plugin\sand-iam\app\runtime\ServiceGrantQuery::hasActiveGrant` 只读端口，供 sand-ai 等兄弟产品按 `IdentityContextProvider::resolveServiceGrants` 同等 WHERE 语义查询有效授权，不再直读 `sand_iam_*` 表。
+- 版本声明、SBOM、冻结构建元数据与 `release/tools/build-upgrade-097.php` 同步为 0.9.7；`install.sql`/`update.sql`/`uninstall.sql` 由 `build-lifecycle.php` 重新生成（47 个迁移，revision 045 目录快照 `release/tools/resources/schema-045-catalog.json` 钉死校验）。真实 PostgreSQL fixture（`tests/application-capability-fixture.php`，scratch 库）覆盖目录过滤、revision 稳定、授权/撤销/重授权、幂等重放与冲突、禁用项不复活、审计原子性与无明文凭证断言。
+
+## 0.9.6（候选，待发布）
+
+- 默认应用身份中性化：`AccessMatrixInput::DEFAULT_APPLICATION_CODE`/`DEFAULT_APPLICATION_NAME` 由产品定制值改为通用 `default-app`/`默认应用`，发布载荷不再携带行业定制预设。存量安装经两条不依赖旧字面量的兼容路径收敛：`lifecycle/default-application-rename.pgsql`（随 `update.sql` 下发的数据迁移）按结构签名——应用持有 `prod` 环境且其下 `sand-ai` 工作负载 client 受众为 `sand-ai`——识别自动供给链并就地把 code/name 更新为中性值；`AccessMatrixService::adoptProvisionedDefaultApplication` 在未跑升级生命周期的宿主上提供同等运行时收敛。标识均按数字 id 关联，环境、client、grant、凭证与审计引用不受影响，旧安装权限与引用保持可用；迁移幂等，重复执行收敛于同一状态，每机构至多改名一个候选。
+- 版本声明、SBOM 与冻结构建元数据同步为 0.9.6。无新增结构迁移；`install.sql`/`uninstall.sql` 与 0.9.5 逐字节一致，`update.sql` 仅追加上述数据收敛语句（`build-lifecycle.php --check` 通过）。
+
 ## 0.9.5（候选，待发布）
 
 - 修复管理端英文原始报错透传到界面提示（ux_p2b P11 严重项 S-2 的 SandIAM 侧）：访问矩阵、`ResourceListPage`、`GoalGuide`、`TaskPath`、应用业务动作页的读取/授权/ensure-defaults 调用补 `showErrorMessage:false`，阻止宿主 toast 直出服务端英文原文；`listSandIamResource`/`disableSandIamResource`/`postSandIamAction`/`readSandIamResource` 增加可选 `showErrorMessage` 参数（默认 `true`，向后兼容既有调用方）。被压制的错误统一改走 `describeSandIamError` 全中文描述并渲染内联错误面（ElAlert/ElMessage），静默路径均有内联错误或 best-effort 语义兜底。
@@ -21,7 +34,7 @@
 ## 0.9.2（候选，待发布）
 
 - 全新安装试用签发 503 修复：`SAND_IAM_CONTEXT_SIGNING_KEY` 原本只由部署侧注入，全新实例无人供给导致 `trial/context` 签发失败。新增 `ContextSigningKeyProvisioner`：首次需要签发上下文时按私有锁串行生成密钥、先备份再以原子写补入宿主 `.env`、进程内即时刷新，签发不再依赖人工预置密钥。
-- S2 默认实体零步化：新增幂等端点 `POST access-matrix/ensure-defaults`，为空实例自动创建默认客户主体、律序应用、prod 环境与 client（不授权、不发证）；SandIAM 首页与 SandAI 首页在检测到实体为空时自动调用一次，新装实例不再要求先手工走 3 步登记才能"设为默认并启用"。
+- S2 默认实体零步化：新增幂等端点 `POST access-matrix/ensure-defaults`，为空实例自动创建默认客户主体、默认应用、prod 环境与 client（不授权、不发证）；SandIAM 首页与 SandAI 首页在检测到实体为空时自动调用一次，新装实例不再要求先手工走 3 步登记才能"设为默认并启用"。
 - 版本声明、SBOM 与冻结构建元数据同步为 0.9.2。无新增数据库迁移；`install.sql`/`update.sql`/`uninstall.sql` 与 0.9.1 逐字节一致（`build-lifecycle.php --check` 通过）。
 
 ## 0.9.1（候选，待发布）
