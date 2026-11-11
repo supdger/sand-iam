@@ -129,12 +129,16 @@ export function parseSandIamIdentities(value: unknown): SandIamIdentityRow[] {
 export function parseSandIamIdentityPage(value: unknown): {
   rows: SandIamIdentityRow[]
   total: number
+  lifecycleEnabled: boolean | null
 } {
   const rows = parseSandIamIdentities(value)
   const page = isRecord(value) && isRecord(value.data) ? value.data : value
   const total = isRecord(page) && typeof page.total === 'number' &&
     Number.isInteger(page.total) && page.total >= 0 ? page.total : rows.length
-  return { rows, total }
+  const lifecycleEnabled = isRecord(page) && typeof page.lifecycle_enabled === 'boolean'
+    ? page.lifecycle_enabled
+    : null
+  return { rows, total, lifecycleEnabled }
 }
 
 export function parseSandIamIdentityGroup(value: unknown): SandIamIdentityGroupRow | null {

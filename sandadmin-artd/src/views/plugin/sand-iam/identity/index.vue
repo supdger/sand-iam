@@ -60,6 +60,7 @@
   const requestError = ref<SandIamRequestError | null>(null)
   const groupSummaryError = ref<SandIamRequestError | null>(null)
   const viewState = ref<'idle' | 'empty' | 'ready'>('idle')
+  const lifecycleEnabled = ref<boolean | null>(null)
   watch([applicationId, keywords], () => { currentPage.value = 1 }, { flush: 'sync' })
   watch([applicationId, keywords, currentPage, pageSize], () => {
     scopeVersion++
@@ -187,6 +188,7 @@
       const rows = page.rows
       identities.value = rows
       total.value = page.total
+      lifecycleEnabled.value = page.lifecycleEnabled
       viewState.value = rows.length === 0 ? 'empty' : 'ready'
       if (application !== null) await loadGroupSummaries(application)
       else groupSummaryAvailable.value = false
@@ -451,7 +453,15 @@
               启用
             </ElButton>
             <ElButton
-              v-if="identityCanDelete(scope.row)"
+              v-if="lifecycleEnabled === false && scope.row.lifecycle_state !== 'deleted'"
+              size="small"
+              disabled
+              title="当前没有开启账号删除，不能在这里删除。"
+            >
+              删除（当前没有开启账号删除）
+            </ElButton>
+            <ElButton
+              v-else-if="identityCanDelete(scope.row)"
               size="small"
               type="danger"
               :disabled="!canDelete || saving"

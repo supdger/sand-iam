@@ -64,6 +64,11 @@ final class IdentityController extends ApplicationResourceController
         return $this->success('应用用户已恢复；旧会话、旧令牌和已移除的授权关系不会恢复');
     }
     protected function assertReferences(array $payload, ?object $existing = null): void { if (isset($payload['application_id']) && !Application::where('id', (int) $payload['application_id'])->where('status', 1)->find()) throw new ApiException('SAND_IAM_RESOURCE_NOT_FOUND: 所属应用不存在或已停用', 400); }
+    protected function formatIndexPage(array $page): array
+    {
+        $page['lifecycle_enabled'] = (int) config('plugin.sand-iam.app.identity_lifecycle_enabled', 0) === 1;
+        return $page;
+    }
     /**
      * 生命周期开关关闭时走通用停用，但仍同步 lifecycle_state，
      * 与 delete/enable 的生命周期门禁对齐；否则列表按 lifecycle_state
