@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace plugin\SandIam\app\admin\controller;
 
 use plugin\SandIam\app\admin\support\AdminOrganizationAccess;
+use plugin\SandIam\app\admin\support\IdentityGroupPolicy;
 use plugin\SandIam\app\model\Application;
 use plugin\SandIam\app\model\Identity;
 use plugin\SandIam\app\model\IdentityGroup;
@@ -21,7 +22,7 @@ final class IdentityGroupController extends BaseController
     #[Permission('SandIAM 用户组列表', 'sand_iam:identity_group:index')]
     public function index(Request $request): Response
     {
-        $this->enabled(); $applicationId = (int) $request->input('application_id', 0); $this->access($request)->assertApplication($applicationId);
+        $applicationId = (int) $request->input('application_id', 0); $this->access($request)->assertApplication($applicationId);
         $query = IdentityGroup::where('application_id', $applicationId)->order('depth', 'asc')->order('name', 'asc');
         $status = (int) $request->input('status', 0); if (in_array($status, [1, 2], true)) $query->where('status', $status);
         $keyword = trim((string) $request->input('keywords', '')); if ($keyword !== '') $query->whereLike('name', '%' . $keyword . '%');
@@ -50,6 +51,12 @@ final class IdentityGroupController extends BaseController
     {
         $group = $this->group($request); (new IdentityGroupService())->update((int) $group->id, (int) $group->application_id, (string) $group->name, $group->parent_id === null ? null : (int) $group->parent_id, (string) ($group->description ?? ''), 2, $this->actor($request), $this->requestId($request));
         return $this->success('用户组已停用');
+    }
+    #[Permission('SandIAM 用户组停用', 'sand_iam:identity_group:disable')]
+    public function delete(Request $request): Response
+    {
+        $this->access($request);
+        throw new ApiException(IdentityGroupPolicy::deleteRefusal(), 400);
     }
     #[Permission('SandIAM 用户组成员加入', 'sand_iam:identity_group_member:add')]
     public function addMember(Request $request): Response

@@ -714,7 +714,7 @@
         <ElTableColumn label="状态" min-width="90">
           <template #default="scope">{{ groupStatusLabel(scope.row.status) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" min-width="180" fixed="right">
+        <ElTableColumn label="操作" min-width="420" fixed="right">
           <template #default="scope">
             <ElButton size="small" :disabled="!canUpdate || loading || relationSaving" @click="editGroup(scope.row)">编辑</ElButton>
             <ElButton size="small" :disabled="!canMemberIndex" @click="loadMembers(scope.row)">
@@ -731,6 +731,9 @@
               @click="disableGroup(scope.row)"
             >
               停用
+            </ElButton>
+            <ElButton size="small" disabled title="用户组不能删除，请改为停用">
+              删除（用户组不能删除，请改为停用）
             </ElButton>
           </template>
         </ElTableColumn>
