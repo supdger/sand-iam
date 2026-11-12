@@ -434,9 +434,14 @@
     loading.value = true
     try {
       await ElMessageBox.confirm(
-        `删除后不能恢复。确认删除「${row.name}」吗？`,
-        '删除用户组',
-        { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+        '删除后不能恢复。',
+        `删除「${row.name}」？`,
+        {
+          type: 'warning',
+          confirmButtonText: '删除',
+          cancelButtonText: '再想想',
+          confirmButtonClass: 'el-button--danger'
+        }
       )
     } catch {
       loading.value = false

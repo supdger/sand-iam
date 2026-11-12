@@ -20,7 +20,7 @@ final class IdentityGroupPolicy
             return 'SAND_IAM_IDENTITY_GROUP_HAS_MEMBERS: 组里还有成员，先移出成员再删除';
         }
         if ($childCount > 0) {
-            return 'SAND_IAM_IDENTITY_GROUP_HAS_CHILDREN: 还有下级用户组，先删除下级组或改挂别处再删除';
+            return 'SAND_IAM_IDENTITY_GROUP_HAS_CHILDREN: 组里还有子组，先删掉子组或把它移到别的组下，再删除';
         }
         return null;
     }

@@ -326,7 +326,7 @@ export function identityCanRestore(row: SandIamIdentityRow): boolean {
 export function groupDeleteRefusal(row: SandIamIdentityGroupRow): string | null {
   if (row.status !== 2) return '先停用才能删除'
   if (row.member_count > 0) return '组里还有成员，先移出成员再删除'
-  if (row.child_count > 0) return '还有下级用户组，先删除下级组或改挂别处再删除'
+  if (row.child_count > 0) return '组里还有子组，先删掉子组或把它移到别的组下，再删除'
   return null
 }
 

@@ -730,6 +730,16 @@ function stableErrorDetail(code: StableCode, text: string): string {
       if (text.includes(`SAND_IAM_VALIDATION_ERROR: ${message}`)) return recovery
     }
   }
+  // 拒删报文自带「CODE: 中文原因」，直接显示后端那句，与置灰悬停文案同一句；
+  // 改上级、停用等裸码拒绝仍走通用恢复提示。
+  if (code === 'SAND_IAM_IDENTITY_GROUP_HAS_CHILDREN') {
+    const marker = `${code}: `
+    const index = text.lastIndexOf(marker)
+    if (index !== -1) {
+      const reason = text.slice(index + marker.length).trim()
+      if (reason !== '') return reason
+    }
+  }
   return RECOVERY[code]
 }
 

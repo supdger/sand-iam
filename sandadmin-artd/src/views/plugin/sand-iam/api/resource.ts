@@ -26,10 +26,12 @@ function compactParams(params: SandIamListParams): Record<string, string | numbe
   return query
 }
 
+// showErrorMessage 默认关闭的理由见 write.ts：真实 HTTP 4xx 会被弹成「服务器内部错误」，
+// 列表与写操作的错误统一交给页面用 describeSandIamError 呈现。
 export function listSandIamResource(
   endpoint: SandIamResourceEndpoint,
   params: SandIamListParams,
-  showErrorMessage = true
+  showErrorMessage = false
 ): Promise<unknown> {
   return request.get<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/${endpoint}/index`,
@@ -45,6 +47,7 @@ export function listSandIamGrantCandidates(
 ): Promise<unknown> {
   return request.get<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/grant/${kind}`,
-    params: { ...compactParams(params), ...(id === undefined ? {} : { id }) }
+    params: { ...compactParams(params), ...(id === undefined ? {} : { id }) },
+    showErrorMessage: false
   })
 }
