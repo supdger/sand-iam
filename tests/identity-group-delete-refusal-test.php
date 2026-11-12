@@ -89,6 +89,28 @@ ok(str_contains($page, "confirmButtonText: '删除'") && str_contains($page, "ca
 ok(str_contains($page, "confirmButtonClass: 'el-button--danger'"), 'confirm button is rendered as danger');
 ok(str_contains($page, '已删除'), 'delete success refreshes with a named toast');
 
+// 「再想想」回到灰框灰字：MessageBox 取消按钮不传 type，宿主主题把默认按钮染成主色描边；
+// el-button--default 类命中宿主确认框中性化规则，删除按钮保持 danger 不受影响。
+$identityPage = (string) file_get_contents($root . '/sandadmin-artd/src/views/plugin/sand-iam/identity/index.vue');
+ok(substr_count($page, "cancelButtonClass: 'el-button--default'") === 1, 'group delete cancel button is the neutral default');
+ok(substr_count($identityPage, "cancelButtonClass: 'el-button--default'") === 1, 'identity delete cancel button is the neutral default');
+ok(str_contains($identityPage, "confirmButtonText: '删除'") && str_contains($identityPage, "cancelButtonText: '再想想'"), 'identity delete dialog uses the shared wording');
+ok(str_contains($identityPage, "confirmButtonClass: 'el-button--danger'"), 'identity delete confirm button stays danger');
+ok(str_contains($page, '删除后不能恢复。') && str_contains($identityPage, '删除后不能恢复。'), 'both delete dialog bodies end with a full stop');
+
+// 用户组列表在 1280 视口下不再截表头或被固定列盖住：
+// 「成员数量」4 个字加单元格左右各 12px 内边距，列宽须明显大于 80 才不截断；
+// 全表 min-width 之和压在 1280 视口可用宽度内，不触发横向滚动也就不会盖列。
+$groupsTableStart = strpos($page, 'empty-text="还没有用户组"');
+$groupsTable = substr($page, $groupsTableStart, (int) strpos($page, '</ElTable>', $groupsTableStart) - $groupsTableStart);
+ok(preg_match('/label="成员数量" min-width="(\d+)"/', $groupsTable, $memberColumn) === 1 && (int) $memberColumn[1] >= 104,
+    'member count column keeps the header text uncut');
+ok(preg_match('/label="状态" min-width="(\d+)"/', $groupsTable, $statusColumn) === 1 && (int) $statusColumn[1] >= 66,
+    'status column keeps its content visible');
+preg_match_all('/min-width="(\d+)"/', $groupsTable, $minWidths);
+$minWidthSum = array_sum(array_map('intval', $minWidths[1]));
+ok($minWidthSum > 0 && $minWidthSum <= 920, 'group table min widths fit inside the 1280 viewport');
+
 // 业务拒绝返回真实 HTTP 4xx，共享请求层的全局提示会把 409 弹成「服务器内部错误」；
 // 本目录 api 封装默认关掉它，错误统一交给页面用 describeSandIamError 呈现。
 $write = (string) file_get_contents($root . '/sandadmin-artd/src/views/plugin/sand-iam/api/write.ts');
