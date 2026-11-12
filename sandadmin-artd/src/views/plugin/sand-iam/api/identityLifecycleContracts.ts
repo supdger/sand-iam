@@ -74,7 +74,7 @@ function readString(value: unknown): string | null {
 
 export function lifecycleStateLabel(state: string | null): string {
   if (state === 'pending') return '等待邀请'
-  if (state === 'active') return '正常'
+  if (state === 'active') return '已启用'
   if (state === 'disabled') return '已停用'
   if (state === 'guest') return '访客'
   if (state === 'deleted') return '已删除'

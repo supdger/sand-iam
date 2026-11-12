@@ -20,6 +20,21 @@ final class IdentityController extends ApplicationResourceController
     protected array $requiredFields = ['application_id', 'code', 'display_name'];
     protected string $resourceType = 'identity';
     protected ?string $keywordField = 'display_name';
+
+    /**
+     * 默认不列出已删除用户；筛选指定状态时只返回该状态。
+     */
+    protected function applyIndexFilters(object $query, Request $request): void
+    {
+        $state = trim((string) $request->input('lifecycle_state', ''));
+        if ($state === 'active' || $state === 'disabled' || $state === 'deleted') {
+            $query->where('lifecycle_state', $state);
+            return;
+        }
+        $query->where(static function (object $inner): void {
+            $inner->whereNull('lifecycle_state')->whereOr('lifecycle_state', '<>', 'deleted');
+        });
+    }
     #[Permission('SandIAM 应用用户身份列表', 'sand_iam:identity:index')] public function index(Request $request): Response { return parent::index($request); }
     #[Permission('SandIAM 应用用户身份读取', 'sand_iam:identity:read')] public function read(Request $request): Response { return parent::read($request); }
     #[Permission('SandIAM 应用用户身份保存', 'sand_iam:identity:save')] public function save(Request $request): Response { return parent::save($request); }
