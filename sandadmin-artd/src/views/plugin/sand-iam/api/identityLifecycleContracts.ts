@@ -23,6 +23,7 @@ export interface SandIamIdentityGroupRow {
   readonly parent_id: number | null
   readonly description: string
   readonly member_count: number
+  readonly child_count: number
   readonly status: number
 }
 
@@ -74,7 +75,7 @@ function readString(value: unknown): string | null {
 
 export function lifecycleStateLabel(state: string | null): string {
   if (state === 'pending') return '等待邀请'
-  if (state === 'active') return '正常'
+  if (state === 'active') return '已启用'
   if (state === 'disabled') return '已停用'
   if (state === 'guest') return '访客'
   if (state === 'deleted') return '已删除'
@@ -129,12 +130,16 @@ export function parseSandIamIdentities(value: unknown): SandIamIdentityRow[] {
 export function parseSandIamIdentityPage(value: unknown): {
   rows: SandIamIdentityRow[]
   total: number
+  lifecycleEnabled: boolean | null
 } {
   const rows = parseSandIamIdentities(value)
   const page = isRecord(value) && isRecord(value.data) ? value.data : value
   const total = isRecord(page) && typeof page.total === 'number' &&
     Number.isInteger(page.total) && page.total >= 0 ? page.total : rows.length
-  return { rows, total }
+  const lifecycleEnabled = isRecord(page) && typeof page.lifecycle_enabled === 'boolean'
+    ? page.lifecycle_enabled
+    : null
+  return { rows, total, lifecycleEnabled }
 }
 
 export function parseSandIamIdentityGroup(value: unknown): SandIamIdentityGroupRow | null {
@@ -164,6 +169,12 @@ export function parseSandIamIdentityGroup(value: unknown): SandIamIdentityGroupR
     parent_id: readPositiveInt(value.parent_id),
     description: typeof value.description === 'string' ? value.description : '',
     member_count: memberCount,
+    child_count:
+      typeof value.child_count === 'number' &&
+      Number.isInteger(value.child_count) &&
+      value.child_count >= 0
+        ? value.child_count
+        : 0,
     status
   }
 }
@@ -306,6 +317,17 @@ export function identityCanDelete(row: SandIamIdentityRow): boolean {
 
 export function identityCanRestore(row: SandIamIdentityRow): boolean {
   return row.lifecycle_state === 'deleted'
+}
+
+/**
+ * 与后端 IdentityGroupPolicy 同一套规则和优先级：先停用，再移成员，最后处理下级组。
+ * 返回 null 表示可以删除；文案同时用作删除按钮置灰后的悬停提示。
+ */
+export function groupDeleteRefusal(row: SandIamIdentityGroupRow): string | null {
+  if (row.status !== 2) return '先停用才能删除'
+  if (row.member_count > 0) return '组里还有成员，先移出成员再删除'
+  if (row.child_count > 0) return '还有下级用户组，先删除下级组或改挂别处再删除'
+  return null
 }
 
 /**

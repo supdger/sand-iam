@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace plugin\SandIam\app\service;
 
+use plugin\SandIam\app\admin\support\IdentityGroupPolicy;
 use plugin\SandIam\app\model\Application;
 use plugin\SandIam\app\model\Identity;
 use plugin\SandIam\app\model\IdentityGroup;
 use plugin\SandIam\app\model\IdentityGroupMember;
+use plugin\SandIam\app\model\IdentityGroupRole;
 use plugin\sandadmin\exception\ApiException;
 use think\facade\Db;
 
@@ -93,6 +95,28 @@ final class IdentityGroupService
             $member->save(['status' => 2]);
             (new IdentityEventPublisher())->publish($application, $identity, 'identity.updated', ['groups'], $requestId);
             $this->writeAudit($application, 'identity_group.member_remove', $groupId, $actor, $requestId, ['identity_id' => $identityId]);
+            Db::commit();
+        } catch (\Throwable $exception) {
+            Db::rollback();
+            throw $exception;
+        }
+    }
+
+    public function delete(int $id, int $applicationId, string $actor, string $requestId): void
+    {
+        $application = $this->application($applicationId);
+        Db::startTrans();
+        try {
+            $group = $this->group($id, $applicationId, true);
+            $refusal = IdentityGroupPolicy::deleteRefusal(
+                (int) $group->status,
+                IdentityGroupMember::where('identity_group_id', $id)->where('application_id', $applicationId)->where('status', 1)->count(),
+                IdentityGroup::where('parent_id', $id)->where('application_id', $applicationId)->count()
+            );
+            if ($refusal !== null) throw new ApiException($refusal, 409);
+            IdentityGroupRole::where('identity_group_id', $id)->where('application_id', $applicationId)->where('status', 1)->update(['status' => 2]);
+            $group->delete();
+            $this->writeAudit($application, 'identity_group.delete', $id, $actor, $requestId);
             Db::commit();
         } catch (\Throwable $exception) {
             Db::rollback();

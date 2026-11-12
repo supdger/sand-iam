@@ -7,7 +7,6 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { describeSandIamError } from '../api/errors'
   import {
-    IDENTITY_LOGIN_IDENTIFIER_UNAVAILABLE,
     identityCanDelete,
     identityCanDisable,
     identityCanEnable,
@@ -44,6 +43,8 @@
   const pageSize = ref(100)
   const total = ref(0)
   const keywords = ref('')
+  const stateFilter = ref('')
+  const editorOpen = ref(false)
   let disposed = false
   let scopeVersion = 0
   let listVersion = 0
@@ -60,8 +61,19 @@
   const requestError = ref<SandIamRequestError | null>(null)
   const groupSummaryError = ref<SandIamRequestError | null>(null)
   const viewState = ref<'idle' | 'empty' | 'ready'>('idle')
-  watch([applicationId, keywords], () => { currentPage.value = 1 }, { flush: 'sync' })
-  watch([applicationId, keywords, currentPage, pageSize], () => {
+  const lifecycleEnabled = ref<boolean | null>(null)
+  watch([applicationId, stateFilter], () => {
+    if (currentPage.value !== 1) currentPage.value = 1
+  }, { flush: 'sync' })
+  let searchTimer = 0
+  watch(keywords, () => {
+    window.clearTimeout(searchTimer)
+    searchTimer = window.setTimeout(() => {
+      if (currentPage.value !== 1) currentPage.value = 1
+      else void loadIdentities()
+    }, 300)
+  })
+  watch([applicationId, stateFilter, currentPage, pageSize], () => {
     scopeVersion++
     listVersion++
     summaryVersion++
@@ -73,11 +85,13 @@
     groupSummaryError.value = null
     loading.value = false
     viewState.value = 'idle'
+    void loadIdentities()
   }, { flush: 'sync' })
   watch(applicationId, () => {
     displayName.value = ''
     code.value = ''
     editingIdentity.value = null
+    editorOpen.value = false
   }, { flush: 'sync' })
   onScopeDispose(() => { disposed = true; scopeVersion++; listVersion++; summaryVersion++ })
 
@@ -180,6 +194,7 @@
         page: currentPage.value,
         limit: pageSize.value,
         keywords: keywords.value.trim(),
+        ...(stateFilter.value === '' ? {} : { lifecycle_state: stateFilter.value }),
         ...(application === null ? {} : { application_id: application })
       })
       if (!current()) return
@@ -187,6 +202,7 @@
       const rows = page.rows
       identities.value = rows
       total.value = page.total
+      lifecycleEnabled.value = page.lifecycleEnabled
       viewState.value = rows.length === 0 ? 'empty' : 'ready'
       if (application !== null) await loadGroupSummaries(application)
       else groupSummaryAvailable.value = false
@@ -205,6 +221,24 @@
     editingIdentity.value = row
     displayName.value = row.display_name
     code.value = row.code
+    editorOpen.value = true
+    requestError.value = null
+  }
+
+  function freshUserCode(): string {
+    const alphabet = '0123456789abcdefghijklmnopqrstuvwxyz'
+    const bytes = crypto.getRandomValues(new Uint8Array(8))
+    let body = ''
+    for (const byte of bytes) body += alphabet[byte % alphabet.length]
+    return `user_${body}`
+  }
+
+  function openCreate(): void {
+    if (saving.value || !canSave.value) return
+    editingIdentity.value = null
+    displayName.value = ''
+    code.value = freshUserCode()
+    editorOpen.value = true
     requestError.value = null
   }
 
@@ -213,6 +247,7 @@
     editingIdentity.value = null
     displayName.value = ''
     code.value = ''
+    editorOpen.value = false
   }
 
   async function createIdentity(): Promise<void> {
@@ -222,12 +257,15 @@
     const scope = scopeVersion
     const current = (): boolean => !disposed && scope === scopeVersion
     const application = editing?.application_id ?? selectedId(applicationId.value)
-    if (application === null || displayName.value.trim() === '' || code.value.trim() === '') {
-      requestError.value = describeSandIamError(
-        new Error('SAND_IAM_VALIDATION_ERROR: 请按名称选择接入应用并填写显示名称和系统代码')
-      )
+    if (displayName.value.trim() === '') {
+      requestError.value = describeSandIamError(new Error('SAND_IAM_VALIDATION_ERROR: 请填写显示名称'))
       return
     }
+    if (application === null) {
+      requestError.value = describeSandIamError(new Error('SAND_IAM_VALIDATION_ERROR: 请先选择应用'))
+      return
+    }
+    if (editing === null && code.value.trim() === '') code.value = freshUserCode()
     saving.value = true
     requestError.value = null
     try {
@@ -242,10 +280,12 @@
         await postSandIamAction('identity/update', { id: editing.id, display_name: displayName.value.trim() })
       }
       if (!current()) return
-      ElMessage.success('已保存')
+      const savedName = displayName.value.trim()
+      ElMessage.success(editing === null ? `已新建「${savedName}」` : `已保存「${savedName}」`)
       displayName.value = ''
       code.value = ''
       editingIdentity.value = null
+      editorOpen.value = false
       await loadIdentities()
     } catch (error: unknown) {
       if (current()) requestError.value = describeSandIamError(error)
@@ -319,10 +359,7 @@
     <ElCard class="sand-iam-page-card" shadow="never">
       <div class="mb-4">
         <h2 class="m-0 text-lg font-semibold">应用用户</h2>
-        <p class="mb-0 mt-2 text-sm text-gray-500">
-          查看员工在应用中的身份、状态和用户组。后台新建用户只建立身份记录，不设置登录密码。
-          开通登录请通过“用户邀请”让员工设置密码，或启用公开注册后让员工在应用门户注册；已有身份不会自动与新注册账号合并。
-        </p>
+        <p class="mb-0 mt-2 text-sm text-gray-500">查看这个应用里的用户，可以新建、改名、停用和删除。</p>
       </div>
 
       <ElAlert
@@ -342,14 +379,6 @@
         :description="requestError.detail"
       />
       <ElAlert
-        v-else-if="viewState === 'empty'"
-        class="mb-4"
-        type="info"
-        :closable="false"
-        title="当前没有数据"
-        description="所选应用还没有用户。开通员工登录请返回任务步骤，先配置登录方式，再邀请员工或让员工注册。"
-      />
-      <ElAlert
         v-if="groupSummaryError"
         class="mb-4"
         type="warning"
@@ -358,47 +387,52 @@
         :description="groupSummaryError.detail"
       />
 
-      <ElForm label-width="160px" class="mb-4">
-        <ElFormItem v-if="applicationError" label="应用搜索失败">
-          <span role="alert">{{ applicationError }}</span>
-          <ElButton :loading="applicationLoading" @click="loadApplications(applicationKeywords)">重试搜索</ElButton>
-        </ElFormItem>
-        <ElFormItem label="接入应用">
-          <ElSelect v-model="applicationId" filterable remote :remote-method="loadApplications" :loading="applicationLoading" clearable placeholder="按名称选择">
+      <p v-if="applicationError" role="alert" class="mb-3 text-sm">
+        {{ applicationError }}
+        <ElButton link :loading="applicationLoading" @click="loadApplications(applicationKeywords)">重试</ElButton>
+      </p>
+      <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3">
+          <ElSelect v-model="applicationId" filterable remote :remote-method="loadApplications" :loading="applicationLoading" clearable placeholder="选择应用" style="width: 220px">
             <ElOption
               v-for="row in applications"
               :key="String(row.id)"
-              :label="typeof row.name === 'string' ? row.name : '未命名接入应用'"
+              :label="typeof row.name === 'string' ? row.name : '未命名应用'"
               :value="String(row.id)"
             />
           </ElSelect>
-        </ElFormItem>
-        <ElFormItem label="搜索显示名称">
-          <ElInput v-model="keywords" clearable placeholder="输入名称后加载用户" @keyup.enter="loadIdentities" />
-        </ElFormItem>
-        <ElFormItem>
-          <ElButton :disabled="!canIndex" :loading="loading" @click="loadIdentities"
-            >加载用户</ElButton
-          >
-        </ElFormItem>
-        <ElFormItem label="显示名称">
-          <ElInput v-model="displayName" />
-        </ElFormItem>
-        <ElFormItem label="系统代码">
-          <ElInput v-model="code" :disabled="editingIdentity !== null" />
-        </ElFormItem>
-        <ElFormItem v-if="editingIdentity !== null" label="编辑记录所属应用">
-          <span>{{ applicationName(editingIdentity.application_id) }}</span>
-        </ElFormItem>
-        <ElFormItem>
-          <ElButton type="primary" :disabled="editingIdentity === null ? !canSave : !canUpdate" :loading="saving" @click="createIdentity">
-            {{ editingIdentity === null ? '新建用户' : '保存显示名称' }}
-          </ElButton>
-          <ElButton v-if="editingIdentity !== null" :disabled="saving" @click="cancelEdit">取消编辑</ElButton>
-        </ElFormItem>
-      </ElForm>
+          <ElInput v-model="keywords" clearable placeholder="搜索名称" style="width: 220px" />
+          <ElSelect v-model="stateFilter" clearable placeholder="状态" style="width: 140px">
+            <ElOption label="已启用" value="active" />
+            <ElOption label="已停用" value="disabled" />
+            <ElOption label="已删除" value="deleted" />
+          </ElSelect>
+        </div>
+        <ElButton type="primary" :disabled="!canSave || selectedId(applicationId) === null" @click="openCreate">新建用户</ElButton>
+      </div>
 
-      <ElTable v-loading="loading" :data="identities" border stripe empty-text="暂无可见用户">
+      <ElDialog v-model="editorOpen" :title="editingIdentity === null ? '新建用户' : '编辑用户'" width="480px" :close-on-click-modal="false">
+        <ElAlert
+          v-if="requestError"
+          class="mb-3"
+          type="error"
+          :closable="false"
+          :title="requestError.title"
+          :description="requestError.detail"
+        />
+        <ElForm label-width="96px">
+          <ElFormItem label="显示名称">
+            <ElInput v-model="displayName" maxlength="80" placeholder="请填写显示名称" />
+          </ElFormItem>
+          <p class="text-sm text-gray-500">系统代码会自动生成，不用填写。</p>
+        </ElForm>
+        <template #footer>
+          <ElButton :disabled="saving" @click="cancelEdit">取消</ElButton>
+          <ElButton type="primary" :disabled="editingIdentity === null ? !canSave : !canUpdate" :loading="saving" @click="createIdentity">保存</ElButton>
+        </template>
+      </ElDialog>
+
+      <ElTable v-loading="loading" :data="identities" border stripe empty-text="还没有用户">
         <ElTableColumn label="应用用户名称" min-width="160">
           <template #default="scope">{{ scope.row.display_name }}</template>
         </ElTableColumn>
@@ -408,19 +442,18 @@
         <ElTableColumn label="账号状态" min-width="120">
           <template #default="scope">{{ lifecycleStateLabel(scope.row.lifecycle_state) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="主要登录标识" min-width="180">
-          <template #default>{{ IDENTITY_LOGIN_IDENTIFIER_UNAVAILABLE }}</template>
+        <ElTableColumn label="登录标识" min-width="120">
+          <template #default>—</template>
         </ElTableColumn>
-        <ElTableColumn label="用户组摘要" min-width="180">
+        <ElTableColumn label="用户组" min-width="180">
           <template #default="scope">{{ groupSummary(scope.row) }}</template>
         </ElTableColumn>
         <ElTableColumn label="操作" min-width="260" fixed="right">
           <template #default="scope">
-            <ElButton size="small" :disabled="!canUpdate || saving" @click="editIdentity(scope.row)">编辑名称</ElButton>
+            <ElButton link :disabled="!canUpdate || saving" @click="editIdentity(scope.row)">编辑</ElButton>
             <ElButton
               v-if="identityCanDisable(scope.row)"
-              size="small"
-              type="warning"
+              link
               :disabled="!canDisable || saving"
               @click="
                 act(
@@ -428,7 +461,7 @@
                   'identity/disable',
                   '停用应用用户',
                   identityDisableImpact(scope.row.lifecycle_state),
-                  '已停用'
+                  `已停用「${scope.row.display_name}」`
                 )
               "
             >
@@ -436,7 +469,7 @@
             </ElButton>
             <ElButton
               v-if="identityCanEnable(scope.row)"
-              size="small"
+              link
               :disabled="!canEnable || saving"
               @click="
                 act(
@@ -444,26 +477,26 @@
                   'identity/enable',
                   '启用应用用户',
                   '启用后该用户可以重新登录，但停用前的会话不会恢复。',
-                  '已保存'
+                  `已启用「${scope.row.display_name}」`
                 )
               "
             >
               启用
             </ElButton>
             <ElButton
-              v-if="identityCanDelete(scope.row)"
-              size="small"
+              v-if="lifecycleEnabled !== false && identityCanDelete(scope.row)"
+              link
               type="danger"
               :disabled="!canDelete || saving"
               @click="
-                act(scope.row, 'identity/delete', '删除应用用户', identityDeleteImpact(), '已保存')
+                act(scope.row, 'identity/delete', '删除应用用户', identityDeleteImpact(), `已删除「${scope.row.display_name}」`)
               "
             >
               删除
             </ElButton>
             <ElButton
               v-if="identityCanRestore(scope.row)"
-              size="small"
+              link
               :disabled="!canRestore || saving"
               @click="
                 act(
@@ -471,7 +504,7 @@
                   'identity/restore',
                   '恢复应用用户',
                   '恢复后旧会话、旧令牌和已移除的授权关系不会恢复。',
-                  '已保存'
+                  `已恢复「${scope.row.display_name}」`
                 )
               "
             >

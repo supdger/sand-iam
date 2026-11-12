@@ -113,8 +113,18 @@ abstract class AdminResourceController extends BaseController
     {
         $this->assertAdministrativeAccess();
         $model = $this->find($request);
-        $this->persistMutation($model, ['status' => 2], 'disable', $request);
+        $this->persistMutation($model, $this->disablePayload($model), 'disable', $request);
         return $this->success('已停用');
+    }
+
+    /**
+     * 通用停用动作写入的字段。带额外状态轨（如 lifecycle_state）的资源
+     * 在自己的控制器里覆写本方法保持双轨一致。
+     * @return array<string, mixed>
+     */
+    protected function disablePayload(object $model): array
+    {
+        return ['status' => 2];
     }
 
     private function persistMutation(object $model, array $payload, string $verb, Request $request): void

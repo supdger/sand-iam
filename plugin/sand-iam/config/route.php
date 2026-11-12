@@ -193,6 +193,7 @@ Route::group('/app/sand-iam/admin', static function (): void {
     Route::post('/identity-group/save', [IdentityGroupController::class, 'save']);
     Route::post('/identity-group/update', [IdentityGroupController::class, 'update']);
     Route::post('/identity-group/disable', [IdentityGroupController::class, 'disable']);
+    Route::post('/identity-group/delete', [IdentityGroupController::class, 'delete']);
     Route::get('/identity-group/members', [IdentityGroupController::class, 'members']);
     Route::post('/identity-group/member/add', [IdentityGroupController::class, 'addMember']);
     Route::post('/identity-group/member/remove', [IdentityGroupController::class, 'removeMember']);

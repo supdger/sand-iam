@@ -21,6 +21,8 @@ function compactParams(params: SandIamListParams): Record<string, string | numbe
   if (params.outcome !== undefined && params.outcome !== '') query.outcome = params.outcome
   if (params.scope_type !== undefined && params.scope_type !== '')
     query.scope_type = params.scope_type
+  if (params.lifecycle_state !== undefined && params.lifecycle_state !== '')
+    query.lifecycle_state = params.lifecycle_state
   return query
 }
 
