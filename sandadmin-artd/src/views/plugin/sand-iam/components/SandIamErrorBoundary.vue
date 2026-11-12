@@ -25,6 +25,7 @@
   import { onBeforeUnmount, onErrorCaptured, ref } from 'vue'
   import {
     describeSandIamBoundaryFault,
+    logSandIamFault,
     registerSandIamFaultHandler,
     requestSandIamBoundedReload,
     sandIamProblemInfoText,
@@ -40,6 +41,7 @@
 
   function raise(cause: unknown): void {
     if (fault.value) return
+    logSandIamFault(cause)
     const next = describeSandIamBoundaryFault(cause, props.page)
     fault.value = next
     // 资源/分包加载失败多为版本更新后的旧缓存，给一次有界自动重载；

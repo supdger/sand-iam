@@ -119,6 +119,7 @@
   const referenceLoading = reactive<Record<string, boolean>>({})
   const referenceError = reactive<Record<string, string>>({})
   const referenceRequestId = reactive<Record<string, number>>({})
+  const loadedReferenceParent: Record<string, string> = {}
 
   interface ReferenceOption {
     readonly label: string
@@ -309,9 +310,11 @@
   }
 
   function referenceParams(key: string, keywords = ''): SandIamListParams | null {
+    const query = typeof keywords === 'string' ? keywords.trim() : ''
+    const keyword = query === '' ? undefined : query
     if (key === 'identity_id' && props.filters.includes('application_id')) {
       const application = parsePositiveInt(applicationId.value)
-      return application === null ? null : { page: 1, limit: 100, application_id: application, keywords }
+      return application === null ? null : { page: 1, limit: 100, application_id: application, keywords: keyword }
     }
     if (props.writeMode === 'relation' && key === props.relationGrantField) {
       const identity = referenceOptions.identity_id?.find(
@@ -329,21 +332,29 @@
         page: 1,
         limit: 100,
         application_id: applicationId,
-        keywords: keywords.trim() || undefined
+        keywords: keyword
       }
     }
     if (usesApplicationIndexOrganizationContext.value && key === 'organization_id') {
       return null
     }
     if (usesApplicationIndexOrganizationContext.value && key === 'application_id') {
-      return { page: 1, limit: 100, keywords: keywords.trim() || undefined }
+      return { page: 1, limit: 100, keywords: keyword }
+    }
+    if (key === 'workload_client_id') {
+      const cascaded = cascadedReferenceParams(key, props.filters, {
+        organizationId: organizationId.value,
+        applicationId: applicationId.value,
+        environmentId: environmentId.value
+      })
+      return { ...(cascaded ?? { page: 1, limit: 100 }), keywords: keyword }
     }
     const params = cascadedReferenceParams(key, props.filters, {
       organizationId: organizationId.value,
       applicationId: applicationId.value,
       environmentId: environmentId.value
     })
-    return params === null ? null : { ...params, keywords: keywords.trim() || undefined }
+    return params === null ? null : { ...params, keywords: keyword }
   }
 
   function missingReferenceMessage(key: string): string {
@@ -374,17 +385,30 @@
       referenceError[key] = ''
       return
     }
+    const query = typeof keywords === 'string' ? keywords.trim() : ''
     const relationTarget = props.writeMode === 'relation' && key === props.relationGrantField
+    const params = referenceParams(key, query)
+    const parentToken = params === null ? '' : JSON.stringify(params)
+    if (
+      query === '' &&
+      parentToken !== '' &&
+      loadedReferenceParent[key] === parentToken &&
+      (referenceOptions[key]?.length ?? 0) > 0
+    ) {
+      referenceError[key] = ''
+      return
+    }
     const requestId = (referenceRequestId[key] ?? 0) + 1
     referenceRequestId[key] = requestId
     const relationIdentity = identityId.value
     if (relationTarget) {
       relationTargetId.value = ''
       referenceOptions[key] = []
+      delete loadedReferenceParent[key]
     }
-    const params = referenceParams(key, keywords)
     if (params === null) {
-      referenceOptions[key] = []
+      if ((referenceOptions[key]?.length ?? 0) > 0) referenceOptions[key] = []
+      delete loadedReferenceParent[key]
       referenceLoading[key] = false
       referenceError[key] = missingReferenceMessage(key)
       return
@@ -406,6 +430,7 @@
         !options.some((option) => option.value === selectedOption.value)
           ? [selectedOption, ...options]
           : options
+      if (query === '') loadedReferenceParent[key] = parentToken
       if (usesApplicationIndexOrganizationContext.value && key === 'application_id') {
         syncApplicationGrantOrganization(referenceOptions.application_id ?? [])
       }
@@ -511,6 +536,10 @@
     ) {
       const label = row[embeddedOrganizationLabelKey.value]
       if (typeof label === 'string' && label.trim() !== '') return label
+    }
+    if (key === 'workload_client_id' && row !== undefined) {
+      const clientName = row.workload_client_name
+      if (typeof clientName === 'string' && clientName.trim() !== '') return clientName
     }
     if (value === null || value === undefined || value === '') return '—'
     if (typeof value === 'string' || typeof value === 'number') {
@@ -1121,7 +1150,9 @@
     applicationId.value = ''
     environmentId.value = ''
     workloadClientId.value = ''
-    void loadReferenceOptions()
+    void loadReferenceOption('application_id')
+    void loadReferenceOption('environment_id')
+    void loadReferenceOption('workload_client_id')
   })
 
   watch(applicationId, () => {
@@ -1132,13 +1163,14 @@
     }
     environmentId.value = ''
     workloadClientId.value = ''
-    void loadReferenceOptions()
+    void loadReferenceOption('environment_id')
+    void loadReferenceOption('workload_client_id')
   })
 
   watch(environmentId, () => {
     if (restoringContext) return
     workloadClientId.value = ''
-    void loadReferenceOptions()
+    void loadReferenceOption('workload_client_id')
   })
 </script>
 

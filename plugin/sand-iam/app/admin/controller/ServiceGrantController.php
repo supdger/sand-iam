@@ -8,6 +8,7 @@ use plugin\SandIam\app\admin\support\AdminResourceController;
 use plugin\SandIam\app\model\ServiceAction;
 use plugin\SandIam\app\model\Service;
 use plugin\SandIam\app\model\ServiceGrant;
+use plugin\SandIam\app\admin\support\WorkloadClientNames;
 use plugin\SandIam\app\model\WorkloadClient;
 use plugin\SandIam\app\security\NetworkPolicy;
 use plugin\SandIam\app\security\ServiceGrantConstraintNormalizer;
@@ -31,6 +32,16 @@ final class ServiceGrantController extends AdminResourceController
     {
         $rows = $page['data'] ?? [];
         if ($rows === []) return $page;
+        $clientIds = array_values(array_unique(array_filter(array_map(
+            static fn (array $row): int => (int) ($row['workload_client_id'] ?? 0), $rows,
+        ))));
+        $clients = $clientIds === [] ? [] : WorkloadClient::withTrashed()->whereIn('id', $clientIds)->field('id,name')->select()->toArray();
+        $namesById = [];
+        foreach ($clients as $client) {
+            if (!is_array($client)) continue;
+            $namesById[(int) ($client['id'] ?? 0)] = (string) ($client['name'] ?? '');
+        }
+        $rows = WorkloadClientNames::apply($rows, $namesById);
         $actionIds = array_values(array_unique(array_filter(array_map(
             static fn (array $row): int => (int) ($row['service_action_id'] ?? 0), $rows,
         ))));

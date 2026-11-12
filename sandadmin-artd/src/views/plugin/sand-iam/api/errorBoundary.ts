@@ -70,6 +70,15 @@ function extractRequestId(cause: unknown): string | undefined {
   return undefined
 }
 
+/** 堆栈只进浏览器日志，不进入页面和复制文本。 */
+export function logSandIamFault(cause: unknown): void {
+  if (cause instanceof Error) {
+    console.error('[sand-iam] page fault', cause.name, cause.message, cause.stack ?? '')
+    return
+  }
+  console.error('[sand-iam] page fault', cause)
+}
+
 export function describeSandIamBoundaryFault(
   cause: unknown,
   page: string

@@ -8,6 +8,7 @@ use plugin\SandIam\app\admin\support\AdminOrganizationAccess;
 use plugin\SandIam\app\model\Credential;
 use plugin\SandIam\app\model\Environment;
 use plugin\SandIam\app\model\Application;
+use plugin\SandIam\app\admin\support\WorkloadClientNames;
 use plugin\SandIam\app\model\WorkloadClient;
 use plugin\SandIam\app\service\AuditWriter;
 use plugin\SandIam\app\service\IdempotencyService;
@@ -44,7 +45,19 @@ final class CredentialController extends BaseController
         }
         $clientId = (int) $request->input('workload_client_id', 0);
         if ($clientId > 0) { $query->where('workload_client_id', $clientId); }
-        return $this->success($query->paginate(['page' => max(1, (int) $request->input('page', 1)), 'list_rows' => min(100, max(1, (int) $request->input('limit', 20)))])->toArray());
+        $page = $query->paginate(['page' => max(1, (int) $request->input('page', 1)), 'list_rows' => min(100, max(1, (int) $request->input('limit', 20)))])->toArray();
+        $rows = $page['data'] ?? [];
+        $clientIds = array_values(array_unique(array_filter(array_map(
+            static fn (array $row): int => (int) ($row['workload_client_id'] ?? 0), is_array($rows) ? $rows : [],
+        ))));
+        $clients = $clientIds === [] ? [] : WorkloadClient::withTrashed()->whereIn('id', $clientIds)->field('id,name')->select()->toArray();
+        $namesById = [];
+        foreach ($clients as $client) {
+            if (!is_array($client)) continue;
+            $namesById[(int) ($client['id'] ?? 0)] = (string) ($client['name'] ?? '');
+        }
+        $page['data'] = WorkloadClientNames::apply(is_array($rows) ? $rows : [], $namesById);
+        return $this->success($page);
     }
 
     #[Permission('SandIAM 凭证读取', 'sand_iam:credential:read')]
