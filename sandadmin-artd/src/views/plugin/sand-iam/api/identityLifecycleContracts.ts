@@ -23,6 +23,7 @@ export interface SandIamIdentityGroupRow {
   readonly parent_id: number | null
   readonly description: string
   readonly member_count: number
+  readonly child_count: number
   readonly status: number
 }
 
@@ -168,6 +169,12 @@ export function parseSandIamIdentityGroup(value: unknown): SandIamIdentityGroupR
     parent_id: readPositiveInt(value.parent_id),
     description: typeof value.description === 'string' ? value.description : '',
     member_count: memberCount,
+    child_count:
+      typeof value.child_count === 'number' &&
+      Number.isInteger(value.child_count) &&
+      value.child_count >= 0
+        ? value.child_count
+        : 0,
     status
   }
 }
@@ -310,6 +317,17 @@ export function identityCanDelete(row: SandIamIdentityRow): boolean {
 
 export function identityCanRestore(row: SandIamIdentityRow): boolean {
   return row.lifecycle_state === 'deleted'
+}
+
+/**
+ * 与后端 IdentityGroupPolicy 同一套规则和优先级：先停用，再移成员，最后处理下级组。
+ * 返回 null 表示可以删除；文案同时用作删除按钮置灰后的悬停提示。
+ */
+export function groupDeleteRefusal(row: SandIamIdentityGroupRow): string | null {
+  if (row.status !== 2) return '先停用才能删除'
+  if (row.member_count > 0) return '组里还有成员，先移出成员再删除'
+  if (row.child_count > 0) return '还有下级用户组，先删除下级组或改挂别处再删除'
+  return null
 }
 
 /**

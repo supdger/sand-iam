@@ -7,6 +7,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { describeSandIamError } from '../api/errors'
   import {
+    groupDeleteRefusal,
     lifecycleStateLabel,
     parseSandIamIdentities,
     parseSandIamIdentityGroupMembers,
@@ -29,6 +30,8 @@
   const canIndex = computed(() => hasAuth('sand_iam:identity_group:index'))
   const canSave = computed(() => hasAuth('sand_iam:identity_group:save'))
   const canDisable = computed(() => hasAuth('sand_iam:identity_group:disable'))
+  // 删除复用停用权限：只有能停用的管理员才能删除已停用的空组。
+  const canDelete = canDisable
   const canMemberIndex = computed(() => hasAuth('sand_iam:identity_group_member:index'))
   const canMemberAdd = computed(() => hasAuth('sand_iam:identity_group_member:add'))
   const canMemberRemove = computed(() => hasAuth('sand_iam:identity_group_member:remove'))
@@ -424,6 +427,38 @@
     }
   }
 
+  async function deleteGroup(row: SandIamIdentityGroupRow): Promise<void> {
+    if (loading.value || relationSaving.value || !canDelete.value || !validGroup(row) || groupDeleteRefusal(row) !== null) return
+    const app = appVersion
+    const current = (): boolean => !disposed && app === appVersion && validGroup(row)
+    loading.value = true
+    try {
+      await ElMessageBox.confirm(
+        `删除后不能恢复。确认删除「${row.name}」吗？`,
+        '删除用户组',
+        { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+      )
+    } catch {
+      loading.value = false
+      return
+    }
+    if (!current() || !canDelete.value || groupDeleteRefusal(row) !== null) {
+      loading.value = false
+      return
+    }
+    requestError.value = null
+    try {
+      await postSandIamAction('identity-group/delete', { id: row.id })
+      if (!current()) return
+      ElMessage.success(`已删除「${row.name}」`)
+      await loadGroups()
+    } catch (error: unknown) {
+      if (current()) requestError.value = describeSandIamError(error)
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function loadMembers(row: SandIamIdentityGroupRow): Promise<void> {
     if (!canMemberIndex.value || !validGroup(row)) return
     ++relationVersion
@@ -667,7 +702,7 @@
     <ElCard class="sand-iam-page-card" shadow="never">
       <div class="mb-4">
         <h2 class="m-0 text-lg font-semibold">用户组</h2>
-        <p class="mb-0 mt-2 text-sm text-gray-500">按应用管理用户组，可以新建、改名和停用。</p>
+        <p class="mb-0 mt-2 text-sm text-gray-500">按应用管理用户组，可以新建、改名、停用和删除。</p>
       </div>
 
       <ElAlert
@@ -789,6 +824,22 @@
             >
               启用
             </ElButton>
+            <ElTooltip
+              :disabled="groupDeleteRefusal(scope.row) === null"
+              :content="groupDeleteRefusal(scope.row) ?? ''"
+              placement="top"
+            >
+              <span>
+                <ElButton
+                  link
+                  type="danger"
+                  :disabled="!canDelete || loading || relationSaving || groupDeleteRefusal(scope.row) !== null"
+                  @click="deleteGroup(scope.row)"
+                >
+                  删除
+                </ElButton>
+              </span>
+            </ElTooltip>
           </template>
         </ElTableColumn>
       </ElTable>

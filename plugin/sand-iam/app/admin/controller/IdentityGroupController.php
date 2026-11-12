@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace plugin\SandIam\app\admin\controller;
 
 use plugin\SandIam\app\admin\support\AdminOrganizationAccess;
-use plugin\SandIam\app\admin\support\IdentityGroupPolicy;
 use plugin\SandIam\app\model\Application;
 use plugin\SandIam\app\model\Identity;
 use plugin\SandIam\app\model\IdentityGroup;
@@ -52,11 +51,13 @@ final class IdentityGroupController extends BaseController
         $group = $this->group($request); (new IdentityGroupService())->update((int) $group->id, (int) $group->application_id, (string) $group->name, $group->parent_id === null ? null : (int) $group->parent_id, (string) ($group->description ?? ''), 2, $this->actor($request), $this->requestId($request));
         return $this->success('用户组已停用');
     }
+    // 删除复用停用权限：能停用用户组的管理员才能删除已停用的空组。
     #[Permission('SandIAM 用户组停用', 'sand_iam:identity_group:disable')]
     public function delete(Request $request): Response
     {
-        $this->access($request);
-        throw new ApiException(IdentityGroupPolicy::deleteRefusal(), 400);
+        $group = $this->group($request);
+        (new IdentityGroupService())->delete((int) $group->id, (int) $group->application_id, $this->actor($request), $this->requestId($request));
+        return $this->success('用户组已删除');
     }
     #[Permission('SandIAM 用户组成员加入', 'sand_iam:identity_group_member:add')]
     public function addMember(Request $request): Response
@@ -82,7 +83,7 @@ final class IdentityGroupController extends BaseController
         return $this->success($result);
     }
     private function group(Request $request): IdentityGroup { $this->enabled(); $group = IdentityGroup::find((int) $request->input('id', $request->post('id', 0))); if ($group === null) throw new ApiException('SAND_IAM_RESOURCE_NOT_FOUND: 用户组不存在', 404); $this->access($request)->assertApplication((int) $group->application_id); return $group; }
-    /** @return array<string,mixed> */ private function payload(IdentityGroup $group): array { $parent = $group->parent_id === null ? null : IdentityGroup::find((int) $group->parent_id); return ['id' => (int) $group->id, 'application_id' => (int) $group->application_id, 'code' => (string) $group->code, 'name' => (string) $group->name, 'parent_id' => $group->parent_id === null ? null : (int) $group->parent_id, 'parent_name' => $parent ? (string) $parent->name : '', 'description' => (string) ($group->description ?? ''), 'depth' => (int) $group->depth, 'member_count' => IdentityGroupMember::where('identity_group_id', (int) $group->id)->where('status', 1)->count(), 'status' => (int) $group->status]; }
+    /** @return array<string,mixed> */ private function payload(IdentityGroup $group): array { $parent = $group->parent_id === null ? null : IdentityGroup::find((int) $group->parent_id); return ['id' => (int) $group->id, 'application_id' => (int) $group->application_id, 'code' => (string) $group->code, 'name' => (string) $group->name, 'parent_id' => $group->parent_id === null ? null : (int) $group->parent_id, 'parent_name' => $parent ? (string) $parent->name : '', 'description' => (string) ($group->description ?? ''), 'depth' => (int) $group->depth, 'member_count' => IdentityGroupMember::where('identity_group_id', (int) $group->id)->where('status', 1)->count(), 'child_count' => IdentityGroup::where('parent_id', (int) $group->id)->where('application_id', (int) $group->application_id)->count(), 'status' => (int) $group->status]; }
     private function nullableId(mixed $value): ?int { $id = (int) $value; return $id > 0 ? $id : null; }
     private function enabled(): void { if ((int) config('plugin.sand-iam.app.identity_lifecycle_enabled', 0) !== 1) throw new ApiException('SAND_IAM_IDENTITY_LIFECYCLE_UNAVAILABLE', 503); }
     private function access(Request $request): AdminOrganizationAccess { $token = $request->header('check_admin', []); return new AdminOrganizationAccess(is_array($token) ? (int) ($token['id'] ?? 0) : 0, is_array($token) ? $token : null); }
