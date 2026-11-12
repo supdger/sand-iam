@@ -286,13 +286,6 @@ export function identityDisableImpact(state: string | null): string {
 }
 
 /**
- * 删除确认文案：两段式保留期；恢复不恢复旧会话、旧令牌和已移除授权。
- */
-export function identityDeleteImpact(): string {
-  return '删除后进入保留期，现有登录和授权关系均已撤销。恢复时旧会话、旧令牌和已移除授权不会恢复。'
-}
-
-/**
  * pending 只走邀请重发/撤销；lifecycle 未启用时退回 status=1 的兼容停用。
  */
 export function identityCanDisable(row: SandIamIdentityRow): boolean {
@@ -326,7 +319,7 @@ export function identityCanRestore(row: SandIamIdentityRow): boolean {
 export function groupDeleteRefusal(row: SandIamIdentityGroupRow): string | null {
   if (row.status !== 2) return '先停用才能删除'
   if (row.member_count > 0) return '组里还有成员，先移出成员再删除'
-  if (row.child_count > 0) return '还有下级用户组，先删除下级组或改挂别处再删除'
+  if (row.child_count > 0) return '组里还有子组，先删掉子组或把它移到别的组下，再删除'
   return null
 }
 

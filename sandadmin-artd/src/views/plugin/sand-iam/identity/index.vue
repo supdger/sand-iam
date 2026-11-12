@@ -11,7 +11,6 @@
     identityCanDisable,
     identityCanEnable,
     identityCanRestore,
-    identityDeleteImpact,
     identityDisableImpact,
     identityGroupNamesByMember,
     identityGroupSummaryLabel,
@@ -320,11 +319,18 @@
     const current = (): boolean => !disposed && scope === scopeVersion
     saving.value = true
     try {
-      await ElMessageBox.confirm(impact, title, {
-        type: 'warning',
-        confirmButtonText: '确认',
-        cancelButtonText: '取消'
-      })
+      await ElMessageBox.confirm(
+        impact,
+        title,
+        path === 'identity/delete'
+          ? {
+              type: 'warning',
+              confirmButtonText: '删除',
+              cancelButtonText: '再想想',
+              confirmButtonClass: 'el-button--danger'
+            }
+          : { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
+      )
     } catch {
       saving.value = false
       return
@@ -489,7 +495,13 @@
               type="danger"
               :disabled="!canDelete || saving"
               @click="
-                act(scope.row, 'identity/delete', '删除应用用户', identityDeleteImpact(), `已删除「${scope.row.display_name}」`)
+                act(
+                  scope.row,
+                  'identity/delete',
+                  `删除「${scope.row.display_name}」？`,
+                  '删除后不能恢复。',
+                  `已删除「${scope.row.display_name}」`
+                )
               "
             >
               删除

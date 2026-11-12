@@ -21,10 +21,15 @@ export function readSandIamResource(
   })
 }
 
+/**
+ * sand-iam 后端对业务拒绝返回真实 HTTP 4xx，共享请求层会把 409 等未登记状态
+ * 统一弹成「服务器内部错误，请稍后重试」，与页面自己呈现的白话原因打架；
+ * 这里默认关掉全局提示，错误一律交给调用方经 describeSandIamError 呈现。
+ */
 export function saveSandIamResource(
   endpoint: SandIamResourceEndpoint,
   data: SandIamWriteBody,
-  showErrorMessage = true
+  showErrorMessage = false
 ): Promise<unknown> {
   return request.post<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/${endpoint}/save`,
@@ -36,7 +41,7 @@ export function saveSandIamResource(
 export function updateSandIamResource(
   endpoint: SandIamResourceEndpoint,
   data: SandIamWriteBody,
-  showErrorMessage = true
+  showErrorMessage = false
 ): Promise<unknown> {
   return request.post<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/${endpoint}/update`,
@@ -48,7 +53,7 @@ export function updateSandIamResource(
 export function disableSandIamResource(
   endpoint: SandIamResourceEndpoint,
   id: number,
-  showErrorMessage = true
+  showErrorMessage = false
 ): Promise<unknown> {
   return request.post<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/${endpoint}/disable`,
@@ -57,7 +62,7 @@ export function disableSandIamResource(
   })
 }
 
-export function postSandIamAction(path: string, data: SandIamWriteBody, showErrorMessage = true): Promise<unknown> {
+export function postSandIamAction(path: string, data: SandIamWriteBody, showErrorMessage = false): Promise<unknown> {
   return request.post<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/${path}`,
     data,
@@ -73,14 +78,15 @@ export function postSandIamForm(path: string, data: FormData): Promise<unknown> 
   return request.post<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/${path}`,
     data,
-    headers: requestHeaders()
+    headers: requestHeaders(),
+    showErrorMessage: false
   })
 }
 
 export function getSandIamAdmin(
   path: string,
   params: Readonly<Record<string, string | number>> = {},
-  showErrorMessage = true
+  showErrorMessage = false
 ): Promise<unknown> {
   return request.get<unknown>({
     url: `${SAND_IAM_ADMIN_PREFIX}/${path}`,
