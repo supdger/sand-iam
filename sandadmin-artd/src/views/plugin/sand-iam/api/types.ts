@@ -145,6 +145,7 @@ export interface SandIamListParams {
   readonly actor_type?: string
   readonly outcome?: string
   readonly scope_type?: string
+  readonly lifecycle_state?: string
 }
 
 export interface SandIamResourcePage {
