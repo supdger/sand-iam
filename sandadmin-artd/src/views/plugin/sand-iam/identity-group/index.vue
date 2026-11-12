@@ -440,7 +440,10 @@
           type: 'warning',
           confirmButtonText: '删除',
           cancelButtonText: '再想想',
-          confirmButtonClass: 'el-button--danger'
+          confirmButtonClass: 'el-button--danger',
+          // MessageBox 取消按钮不传 type，宿主按默认按钮渲染时带主色描边；
+          // 补上 el-button--default 类命中宿主的确认框中性化规则，回到灰框灰字。
+          cancelButtonClass: 'el-button--default'
         }
       )
     } catch {
@@ -796,19 +799,19 @@
         <ElTableColumn label="用户组名称" min-width="160">
           <template #default="scope">{{ scope.row.name }}</template>
         </ElTableColumn>
-        <ElTableColumn label="所属应用" min-width="160">
+        <ElTableColumn label="所属应用" min-width="140">
           <template #default>{{ selectedApplicationName() }}</template>
         </ElTableColumn>
-        <ElTableColumn label="上级用户组" min-width="140">
+        <ElTableColumn label="上级用户组" min-width="120">
           <template #default="scope">{{ scope.row.parent_name || '—' }}</template>
         </ElTableColumn>
-        <ElTableColumn label="成员数量" min-width="90">
+        <ElTableColumn label="成员数量" min-width="110">
           <template #default="scope">{{ scope.row.member_count }}</template>
         </ElTableColumn>
         <ElTableColumn label="状态" min-width="90">
           <template #default="scope">{{ groupStatusLabel(scope.row.status) }}</template>
         </ElTableColumn>
-        <ElTableColumn label="操作" min-width="420" fixed="right">
+        <ElTableColumn label="操作" min-width="240" fixed="right">
           <template #default="scope">
             <ElButton link :disabled="!canUpdate || loading || relationSaving" @click="editGroup(scope.row)">编辑</ElButton>
             <ElButton link :disabled="!canMemberIndex" @click="loadMembers(scope.row)">成员</ElButton>

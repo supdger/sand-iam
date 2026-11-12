@@ -327,7 +327,10 @@
               type: 'warning',
               confirmButtonText: '删除',
               cancelButtonText: '再想想',
-              confirmButtonClass: 'el-button--danger'
+              confirmButtonClass: 'el-button--danger',
+              // MessageBox 取消按钮不传 type，宿主按默认按钮渲染时带主色描边；
+              // 补上 el-button--default 类命中宿主的确认框中性化规则，回到灰框灰字。
+              cancelButtonClass: 'el-button--default'
             }
           : { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' }
       )
