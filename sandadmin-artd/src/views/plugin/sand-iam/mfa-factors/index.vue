@@ -353,7 +353,7 @@
           <template #default="scope">
             <ElSpace>
               <ElButton size="small" :disabled="acting" @click="rename(scope.row)">重命名</ElButton>
-              <ElButton size="small" type="warning" :disabled="acting" @click="revoke(scope.row)">撤销</ElButton>
+              <ElButton v-if="scope.row.status === 1" size="small" type="warning" :disabled="acting" @click="revoke(scope.row)">撤销</ElButton>
             </ElSpace>
           </template>
         </ElTableColumn>

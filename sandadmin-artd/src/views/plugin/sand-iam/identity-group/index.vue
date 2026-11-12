@@ -882,9 +882,10 @@
           <ElTableColumn label="操作" min-width="100" fixed="right">
             <template #default="scope">
               <ElButton
+                v-if="scope.row.status === 1"
                 size="small"
                 type="danger"
-                :disabled="!canRoleRevoke || scope.row.status !== 1 || relationSaving || relationLoading || loading"
+                :disabled="!canRoleRevoke || relationSaving || relationLoading || loading"
                 @click="revokeRole(scope.row)"
               >
                 撤销

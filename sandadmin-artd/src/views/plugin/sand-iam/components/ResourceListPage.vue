@@ -802,6 +802,30 @@
     return row.status === 2 || row.status === '2'
   }
 
+  function rowState(row: SandIamResourceRow): string {
+    return String(row.state ?? '')
+  }
+
+  function rowAlreadyPublished(row: SandIamResourceRow): boolean {
+    if (rowState(row) === 'published') return true
+    const pointer = row.published_version_id
+    return pointer !== null && pointer !== undefined && pointer !== '' && pointer !== 0 && pointer !== '0'
+  }
+
+  function showPublish(row: SandIamResourceRow): boolean {
+    const state = rowState(row)
+    if (state === 'published' || state === 'revoked') return false
+    if (state === 'draft') return true
+    return !rowAlreadyPublished(row)
+  }
+
+  function showRevoke(row: SandIamResourceRow): boolean {
+    const state = rowState(row)
+    if (state === 'revoked' || state === 'draft') return false
+    if (isDisabled(row) && state !== 'published') return false
+    return true
+  }
+
   function writeBusy(): boolean {
     return disposed || restoringContext || loading.value || saving.value || actionConfirming.value || relationConfirming.value
   }
@@ -1491,7 +1515,7 @@
                 恢复启用
               </ElButton>
               <ElButton
-                v-if="writeMode === 'policy' && hasAuth(`${permissionPrefix}:publish`)"
+                v-if="writeMode === 'policy' && hasAuth(`${permissionPrefix}:publish`) && showPublish(scope.row)"
                 :disabled="saving || actionConfirming"
                 size="small"
                 type="success"
@@ -1510,7 +1534,7 @@
               <ElButton v-if="writeMode === 'policy' && hasAuth('sand_iam:policy:read')" size="small"
                 @click="historyPolicyId = rowId(scope.row)">版本历史</ElButton>
               <ElButton
-                v-if="writeMode === 'policy' && hasAuth(`${permissionPrefix}:revoke`)"
+                v-if="writeMode === 'policy' && hasAuth(`${permissionPrefix}:revoke`) && showRevoke(scope.row)"
                 :disabled="saving || actionConfirming"
                 size="small"
                 type="danger"
@@ -1527,7 +1551,7 @@
                 撤销
               </ElButton>
               <ElButton
-                v-if="writeMode === 'grant' && hasAuth(`${permissionPrefix}:revoke`)"
+                v-if="writeMode === 'grant' && hasAuth(`${permissionPrefix}:revoke`) && showRevoke(scope.row)"
                 :disabled="saving || actionConfirming"
                 size="small"
                 type="danger"
@@ -1544,7 +1568,7 @@
                 撤销
               </ElButton>
               <ElButton
-                v-if="writeMode === 'relation' && hasAuth(`${permissionPrefix}:revoke`)"
+                v-if="writeMode === 'relation' && hasAuth(`${permissionPrefix}:revoke`) && showRevoke(scope.row)"
                 :disabled="saving || relationConfirming"
                 size="small"
                 type="danger"
@@ -1582,7 +1606,7 @@
                 轮换密钥
               </ElButton>
               <ElButton
-                v-if="writeMode === 'business-action' && hasAuth(`${permissionPrefix}:update`)"
+                v-if="writeMode === 'business-action' && hasAuth(`${permissionPrefix}:update`) && showPublish(scope.row)"
                 :disabled="saving || actionConfirming || scope.row.status !== 1"
                 size="small"
                 type="success"
@@ -1615,7 +1639,7 @@
                 轮换
               </ElButton>
               <ElButton
-                v-if="writeMode === 'credential' && hasAuth('sand_iam:credential:revoke')"
+                v-if="writeMode === 'credential' && hasAuth('sand_iam:credential:revoke') && showRevoke(scope.row)"
                 :disabled="saving || actionConfirming"
                 size="small"
                 type="danger"
